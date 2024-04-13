@@ -48,10 +48,10 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  annonces     Announce[]
-  clients      Transaction[] @relation("TransactionClient")
-  transactions Transaction[] @relation("TransactionSeller")
-  packages     Package[]
+  advertisements Advertisement[]
+  clients        Transaction[]   @relation("TransactionClient")
+  transactions   Transaction[]   @relation("TransactionSeller")
+  packages       Package[]
 
   @@map("users")
 }
@@ -67,8 +67,8 @@ model Address {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  destinations Announce[] @relation("destination")
-  departures   Announce[] @relation("departure")
+  destinations Advertisement[] @relation("destination")
+  departures   Advertisement[] @relation("departure")
 
   @@unique([latitude, longitude])
   @@map("addresses")
@@ -82,27 +82,27 @@ model Package {
   createdAt  DateTime   @default(now()) @map("created_at")
   updatedAt  DateTime   @updatedAt @map("updated_at")
 
-  owner       User              @relation(fields: [ownerId], references: [id])
-  annonces    AnnouncePackage[]
-  transaction Transaction?
+  owner          User                   @relation(fields: [ownerId], references: [id])
+  advertisements AdvertisementPackage[]
+  transaction    Transaction?
 
   @@map("packages")
 }
 
-model AnnouncePackage {
-  id         String   @id @default(uuid())
-  packageId  String   @map("package_id")
-  announceId String   @map("announce_id")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+model AdvertisementPackage {
+  id              String   @id @default(uuid())
+  packageId       String   @map("package_id")
+  advertisementId String   @map("advertisement_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
-  package  Package  @relation(fields: [packageId], references: [id])
-  announce Announce @relation(fields: [announceId], references: [id])
+  package       Package       @relation(fields: [packageId], references: [id])
+  advertisement Advertisement @relation(fields: [advertisementId], references: [id])
 
-  @@map("announce_packages")
+  @@map("advertisement_packages")
 }
 
-model Announce {
+model Advertisement {
   id            String   @id @default(uuid())
   title         String?
   description   String?
@@ -114,13 +114,13 @@ model Announce {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  author       User              @relation(fields: [authorId], references: [id])
+  author       User                   @relation(fields: [authorId], references: [id])
   transactions Transaction[]
-  destination  Address           @relation("destination", fields: [destinationId], references: [id])
-  departure    Address           @relation("departure", fields: [departureId], references: [id])
-  packages     AnnouncePackage[]
+  destination  Address                @relation("destination", fields: [destinationId], references: [id])
+  departure    Address                @relation("departure", fields: [departureId], references: [id])
+  packages     AdvertisementPackage[]
 
-  @@map("announces")
+  @@map("advertisements")
 }
 
 model Transaction {
@@ -130,16 +130,16 @@ model Transaction {
   status               TransactionStatus @default(PENDING)
   clientId             String            @map("client_id")
   sellerId             String            @map("seller_id")
-  annonceId            String            @map("annonce_id")
+  advertisementId      String            @map("advertisement_id")
   packageId            String            @unique @map("package_id")
   transactionReference String?           @unique @map("transaction_reference")
   createdAt            DateTime          @default(now()) @map("created_at")
   updatedAt            DateTime          @updatedAt @map("updated_at")
 
-  annonce Announce @relation(fields: [annonceId], references: [id])
-  package Package  @relation(fields: [packageId], references: [id])
-  client  User     @relation("TransactionClient", fields: [clientId], references: [id])
-  seller  User     @relation("TransactionSeller", fields: [sellerId], references: [id])
+  advertisement Advertisement @relation(fields: [advertisementId], references: [id])
+  package       Package       @relation(fields: [packageId], references: [id])
+  client        User          @relation("TransactionClient", fields: [clientId], references: [id])
+  seller        User          @relation("TransactionSeller", fields: [sellerId], references: [id])
 
   @@map("transactions")
 }
