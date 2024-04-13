@@ -1,0 +1,155 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+  GP
+}
+
+enum TransactionMethod {
+  CASH
+  CREDIT_CARD
+  PAYPAL
+}
+
+enum WeightUnit {
+  kg
+  g
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+enum Currency {
+  XOF
+  EUR
+  USD
+  GBP
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  firstName String   @map("first_name")
+  lastName  String   @map("last_name")
+  password  String
+  role      Role     @default(USER)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  annonces     Announce[]
+  clients      Transaction[] @relation("TransactionClient")
+  transactions Transaction[] @relation("TransactionSeller")
+  packages     Package[]
+
+  @@map("users")
+}
+
+model Address {
+  id        String   @id @default(uuid())
+  street    String?
+  city      String
+  country   String
+  zipCode   String?  @map("zip_code")
+  latitude  Float    @default(48.864716)
+  longitude Float    @default(2.349014)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  destinations Announce[] @relation("destination")
+  departures   Announce[] @relation("departure")
+
+  @@unique([latitude, longitude])
+  @@map("addresses")
+}
+
+model Package {
+  id         String     @id @default(uuid())
+  weight     Float      @default(0)
+  weighrUnit WeightUnit @default(kg) @map("weight_unit")
+  ownerId    String     @map("owner_id")
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+
+  owner       User              @relation(fields: [ownerId], references: [id])
+  annonces    AnnouncePackage[]
+  transaction Transaction?
+
+  @@map("packages")
+}
+
+model AnnouncePackage {
+  id         String   @id @default(uuid())
+  packageId  String   @map("package_id")
+  announceId String   @map("announce_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  package  Package  @relation(fields: [packageId], references: [id])
+  announce Announce @relation(fields: [announceId], references: [id])
+
+  @@map("announce_packages")
+}
+
+model Announce {
+  id            String   @id @default(uuid())
+  title         String?
+  description   String?
+  price         Float    @default(0)
+  currency      Currency @default(EUR)
+  destinationId String   @map("destination_id")
+  departureId   String   @map("departure_id")
+  authorId      String   @map("author_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  author       User              @relation(fields: [authorId], references: [id])
+  transactions Transaction[]
+  destination  Address           @relation("destination", fields: [destinationId], references: [id])
+  departure    Address           @relation("departure", fields: [departureId], references: [id])
+  packages     AnnouncePackage[]
+
+  @@map("announces")
+}
+
+model Transaction {
+  id                   String            @id @default(uuid())
+  amount               Float
+  method               TransactionMethod @map("transaction_method")
+  status               TransactionStatus @default(PENDING)
+  clientId             String            @map("client_id")
+  sellerId             String            @map("seller_id")
+  annonceId            String            @map("annonce_id")
+  packageId            String            @unique @map("package_id")
+  transactionReference String?           @unique @map("transaction_reference")
+  createdAt            DateTime          @default(now()) @map("created_at")
+  updatedAt            DateTime          @updatedAt @map("updated_at")
+
+  annonce Announce @relation(fields: [annonceId], references: [id])
+  package Package  @relation(fields: [packageId], references: [id])
+  client  User     @relation("TransactionClient", fields: [clientId], references: [id])
+  seller  User     @relation("TransactionSeller", fields: [sellerId], references: [id])
+
+  @@map("transactions")
+}
+
+/// pas encore decider si je vais l'utiliser et revoir le model
+// model Banner {
+//   id        String   @id @default(uuid())
+//   title     String
+//   image     String
+//   link      String
+//   createdAt DateTime @default(now()) @map("created_at")
+//   updatedAt DateTime @updatedAt @map("updated_at")
+// }
