@@ -1,17 +1,155 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = "postgresql://majid:majid@localhost:5432/mydb"
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
-model Utilisateur {
-  id       Int      @id @default(autoincrement())
-  nom      String
-  email    String   @unique
-  age      Int?
+
+enum Role {
+  USER
+  ADMIN
+  GP
 }
+
+enum TransactionMethod {
+  CASH
+  CREDIT_CARD
+  PAYPAL
+}
+
+enum WeightUnit {
+  kg
+  g
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+enum Currency {
+  XOF
+  EUR
+  USD
+  GBP
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  firstName String   @map("first_name")
+  lastName  String   @map("last_name")
+  password  String
+  role      Role     @default(USER)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  advertisements Advertisement[]
+  clients        Transaction[]   @relation("TransactionClient")
+  transactions   Transaction[]   @relation("TransactionSeller")
+  packages       Package[]
+
+  @@map("users")
+}
+
+model Address {
+  id        String   @id @default(uuid())
+  street    String?
+  city      String
+  country   String
+  zipCode   String?  @map("zip_code")
+  latitude  Float    @default(48.864716)
+  longitude Float    @default(2.349014)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  destinations Advertisement[] @relation("destination")
+  departures   Advertisement[] @relation("departure")
+
+  @@unique([latitude, longitude])
+  @@map("addresses")
+}
+
+model Package {
+  id         String     @id @default(uuid())
+  weight     Float      @default(0)
+  weighrUnit WeightUnit @default(kg) @map("weight_unit")
+  ownerId    String     @map("owner_id")
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+
+  owner          User                   @relation(fields: [ownerId], references: [id])
+  advertisements AdvertisementPackage[]
+  transaction    Transaction?
+
+  @@map("packages")
+}
+
+model AdvertisementPackage {
+  id              String   @id @default(uuid())
+  packageId       String   @map("package_id")
+  advertisementId String   @map("advertisement_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  package       Package       @relation(fields: [packageId], references: [id])
+  advertisement Advertisement @relation(fields: [advertisementId], references: [id])
+
+  @@map("advertisement_packages")
+}
+
+model Advertisement {
+  id            String   @id @default(uuid())
+  title         String?
+  description   String?
+  price         Float    @default(0)
+  currency      Currency @default(EUR)
+  destinationId String   @map("destination_id")
+  departureId   String   @map("departure_id")
+  authorId      String   @map("author_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  author       User                   @relation(fields: [authorId], references: [id])
+  transactions Transaction[]
+  destination  Address                @relation("destination", fields: [destinationId], references: [id])
+  departure    Address                @relation("departure", fields: [departureId], references: [id])
+  packages     AdvertisementPackage[]
+
+  @@map("advertisements")
+}
+
+model Transaction {
+  id                   String            @id @default(uuid())
+  amount               Float
+  method               TransactionMethod @map("transaction_method")
+  status               TransactionStatus @default(PENDING)
+  clientId             String            @map("client_id")
+  sellerId             String            @map("seller_id")
+  advertisementId      String            @map("advertisement_id")
+  packageId            String            @unique @map("package_id")
+  transactionReference String?           @unique @map("transaction_reference")
+  createdAt            DateTime          @default(now()) @map("created_at")
+  updatedAt            DateTime          @updatedAt @map("updated_at")
+
+  advertisement Advertisement @relation(fields: [advertisementId], references: [id])
+  package       Package       @relation(fields: [packageId], references: [id])
+  client        User          @relation("TransactionClient", fields: [clientId], references: [id])
+  seller        User          @relation("TransactionSeller", fields: [sellerId], references: [id])
+
+  @@map("transactions")
+}
+
+/// pas encore decider si je vais l'utiliser et revoir le model
+// model Banner {
+//   id        String   @id @default(uuid())
+//   title     String
+//   image     String
+//   link      String
+//   createdAt DateTime @default(now()) @map("created_at")
+//   updatedAt DateTime @updatedAt @map("updated_at")
+// }
