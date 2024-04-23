@@ -6,11 +6,14 @@ import {
   Patch,
   Body,
   Param,
+  UseGuards,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { Prisma } from '@prisma/client';
 import { UUID } from 'crypto';
+import { AuthenticateGuard } from 'src/auth/guards/auth.guard';
 
+@UseGuards(AuthenticateGuard)
 @Controller('users')
 export class UsersController {
   constructor(readonly usersService: UsersService) {}
