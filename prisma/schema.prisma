@@ -62,8 +62,9 @@ model Address {
   city      String
   country   String
   zipCode   String?  @map("zip_code")
-  latitude  Float    @default(48.864716)
-  longitude Float    @default(2.349014)
+  //@SOURCE https://stackoverflow.com/questions/1196415/what-datatype-to-use-when-storing-latitude-and-longitude-data-in-sql-databases
+  latitude  Decimal? @db.Decimal(8, 6)
+  longitude Decimal? @db.Decimal(9, 6)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -76,7 +77,7 @@ model Address {
 
 model Package {
   id         String     @id @default(uuid())
-  weight     Float      @default(0)
+  weight     Decimal    @default(0) @db.Decimal(7, 3)
   weighrUnit WeightUnit @default(kg) @map("weight_unit")
   ownerId    String     @map("owner_id")
   createdAt  DateTime   @default(now()) @map("created_at")
@@ -106,7 +107,7 @@ model Advertisement {
   id            String   @id @default(uuid())
   title         String?
   description   String?
-  price         Float    @default(0)
+  price         Decimal  @default(0)
   currency      Currency @default(EUR)
   destinationId String   @map("destination_id")
   departureId   String   @map("departure_id")
@@ -125,7 +126,7 @@ model Advertisement {
 
 model Transaction {
   id                   String            @id @default(uuid())
-  amount               Float
+  amount               Decimal
   method               TransactionMethod @map("transaction_method")
   status               TransactionStatus @default(PENDING)
   clientId             String            @map("client_id")
