@@ -9,33 +9,38 @@ datasource db {
 }
 
 enum Role {
-  USER
-  ADMIN
-  GP
+  USER  @map("user")
+  ADMIN @map("admin")
+  GP    @map("gp")
 }
 
 enum TransactionMethod {
-  CASH
-  CREDIT_CARD
-  PAYPAL
+  CASH        @map("cash")
+  CREDIT_CARD @map("credit_card")
+  PAYPAL      @map("paypal")
 }
 
 enum WeightUnit {
-  kg
-  g
+  KG @map("kg")
+  G  @map("g")
 }
 
 enum TransactionStatus {
-  PENDING
-  COMPLETED
-  CANCELLED
+  PENDING   @map("pending")
+  COMPLETED @map("completed")
+  CANCELLED @map("cancelled")
 }
 
 enum Currency {
-  XOF
-  EUR
-  USD
-  GBP
+  XOF @map("xof")
+  EUR @map("eur")
+  USD @map("usd")
+  GBP @map("gbp")
+}
+
+enum AdvertisementType {
+  GP      @map("gp")
+  MISSION @map("mission")
 }
 
 model User {
@@ -78,7 +83,7 @@ model Address {
 model Package {
   id         String     @id @default(uuid())
   weight     Decimal    @default(0) @db.Decimal(7, 3)
-  weighrUnit WeightUnit @default(kg) @map("weight_unit")
+  weighrUnit WeightUnit @default(KG) @map("weight_unit")
   ownerId    String     @map("owner_id")
   createdAt  DateTime   @default(now()) @map("created_at")
   updatedAt  DateTime   @updatedAt @map("updated_at")
@@ -104,16 +109,17 @@ model AdvertisementPackage {
 }
 
 model Advertisement {
-  id            String   @id @default(uuid())
+  id            String            @id @default(uuid())
   title         String?
   description   String?
-  price         Decimal  @default(0)
-  currency      Currency @default(EUR)
-  destinationId String   @map("destination_id")
-  departureId   String   @map("departure_id")
-  authorId      String   @map("author_id")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  type          AdvertisementType @default(GP)
+  price         Decimal           @default(0)
+  currency      Currency          @default(EUR)
+  destinationId String            @map("destination_id")
+  departureId   String            @map("departure_id")
+  authorId      String            @map("author_id")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
 
   author       User                   @relation(fields: [authorId], references: [id])
   transactions Transaction[]
