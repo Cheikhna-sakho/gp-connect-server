@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from 'src/database/database.service';
+import { CreatePackageDto } from './dtos/package.dto';
+import { MediasService } from 'src/medias/medias.service';
 type Find = { where: Prisma.PackageWhereInput };
 type FindOne = { where: Prisma.PackageWhereInput };
 type FindUnique = Prisma.PackageWhereUniqueInput;
-type Create = { data: Prisma.PackageCreateInput };
 type Update = {
   data: Prisma.PackageUpdateInput;
   where: Prisma.PackageWhereUniqueInput;
@@ -16,15 +17,19 @@ type Delete = { where: Prisma.PackageWhereUniqueInput };
 @Injectable()
 export class PackagesService {
   private packages: DatabaseService['package'];
-
-  constructor(private readonly databaseService: DatabaseService) {
+  private packageMedias: DatabaseService['packageMedia'];
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly mediasService: MediasService,
+  ) {
     this.packages = this.databaseService.package;
+    this.packageMedias = this.databaseService.packageMedia;
   }
   async findBy(where: FindUnique) {
     return this.packages.findFirst({ where });
   }
   async find({ where }: Find) {
-    return this.packages.findFirst({ where });
+    return this.packages.findMany({ where });
   }
   async findOne({ where }: FindOne) {
     return this.packages.findFirst({ where });
@@ -32,8 +37,21 @@ export class PackagesService {
   async findAll() {
     return this.packages.findMany();
   }
-  async create({ data }: Create) {
-    return this.packages.create({ data });
+  async create(data: CreatePackageDto) {
+    const { images, ownerId, ...rest } = data;
+    let medias = {} as Prisma.PackageMediaCreateNestedManyWithoutPackageInput;
+    if (images) {
+      const imagesData = await this.mediasService.createManyImages(images);
+      medias = {
+        createMany: { data: imagesData.map(({ id }) => ({ mediaId: id })) },
+      };
+    }
+    return this.packages.create({
+      data: { ...rest, ownerId, medias },
+    });
+  }
+  createImage(data: Express.Multer.File) {
+    return this.mediasService.createImage(data);
   }
   async updateWhere({ data, where }: Update) {
     return this.packages.update({ where, data });
