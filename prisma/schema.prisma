@@ -31,16 +31,25 @@ enum TransactionStatus {
   CANCELLED @map("cancelled")
 }
 
-enum Currency {
-  XOF @map("xof")
-  EUR @map("eur")
-  USD @map("usd")
-  GBP @map("gbp")
+enum MissionStatus {
+  PENDING    @map("pending")
+  ACCEPTED   @map("accepted")
+  PICKED_UP  @map("picked_up")
+  IN_TRANSIT @map("in_transit")
+  // idk if we need these two, 
+  DELIVERED  @map("delivered")
+  COMPLETED  @map("completed")
 }
 
 enum AdvertisementType {
-  GP      @map("gp")
-  MISSION @map("mission")
+  DeliveryRequest @map("delivery_request")
+  DeliveryOffer   @map("delivery_offer")
+}
+
+enum ConversationStatus {
+  DRAFT    @map("draft")
+  ARCHIVED @map("archived")
+  ACTIVE   @map("active")
 }
 
 model User {
@@ -52,27 +61,32 @@ model User {
   role      Role     @default(USER)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+  avatar    String?
 
-  advertisements Advertisement[]
-  clients        Transaction[]   @relation("TransactionClient")
-  transactions   Transaction[]   @relation("TransactionSeller")
-  packages       Package[]
+  advertisements   Advertisement[]
+  packages         Package[]
+  missions         Mission[]          @relation("Initiator")
+  acceptedMissions Mission[]          @relation("Acceptor")
+  sentMessages     Message[]          @relation("sender")
+  receivedMessages Message[]          @relation("receiver")
+  conversations    ConversationUser[]
 
   @@map("users")
 }
 
 model Address {
-  id        String   @id @default(uuid())
-  street    String?
-  city      String
-  country   String
-  zipCode   String?  @map("zip_code")
+  id      String  @id @default(uuid())
+  street  String?
+  zipCode String? @map("zip_code")
+  cityId  String  @map("city_id")
+
   //@SOURCE https://stackoverflow.com/questions/1196415/what-datatype-to-use-when-storing-latitude-and-longitude-data-in-sql-databases
   latitude  Decimal? @db.Decimal(8, 6)
   longitude Decimal? @db.Decimal(9, 6)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  city         City            @relation(fields: [cityId], references: [id])
   destinations Advertisement[] @relation("destination")
   departures   Advertisement[] @relation("departure")
 
@@ -80,52 +94,123 @@ model Address {
   @@map("addresses")
 }
 
-model Package {
-  id         String     @id @default(uuid())
-  weight     Decimal    @default(0) @db.Decimal(7, 3)
-  weighrUnit WeightUnit @default(KG) @map("weight_unit")
-  ownerId    String     @map("owner_id")
-  createdAt  DateTime   @default(now()) @map("created_at")
-  updatedAt  DateTime   @updatedAt @map("updated_at")
+model Country {
+  id      String @id @default(uuid())
+  name    String
+  isoCode String @map("iso_code")
 
-  owner          User                   @relation(fields: [ownerId], references: [id])
-  advertisements AdvertisementPackage[]
-  transaction    Transaction?
+  states State[]
+
+  @@map("countries")
+}
+
+model State {
+  id        String @id @default(uuid())
+  name      String
+  countryId String @map("country_id")
+
+  country Country @relation(fields: [countryId], references: [id])
+  cities  City[]
+
+  @@map("states")
+}
+
+model City {
+  id      String @id @default(uuid())
+  name    String
+  stateId String @map("state_id")
+
+  state     State?    @relation(fields: [stateId], references: [id])
+  addresses Address[]
+
+  @@map("cities")
+}
+
+model Media {
+  id        String   @id @default(uuid())
+  url       String
+  type      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  packages     PackageMedia[]
+  MessageMedia MessageMedia[]
+
+  @@map("medias")
+}
+
+model Package {
+  id          String     @id @default(uuid())
+  name        String
+  description String?
+  // type        String
+  weight      Decimal    @default(0) @db.Decimal(7, 3)
+  weightUnit  WeightUnit @default(KG) @map("weight_unit")
+  ownerId     String     @map("owner_id")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  owner   User           @relation(fields: [ownerId], references: [id])
+  mission Mission?
+  medias   PackageMedia[]
 
   @@map("packages")
 }
 
-model AdvertisementPackage {
-  id              String   @id @default(uuid())
-  packageId       String   @map("package_id")
-  advertisementId String   @map("advertisement_id")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+model PackageMedia {
+  id        String   @id @default(uuid())
+  packageId String   @map("package_id")
+  mediaId   String   @map("media_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  package       Package       @relation(fields: [packageId], references: [id])
-  advertisement Advertisement @relation(fields: [advertisementId], references: [id])
+  package Package @relation(fields: [packageId], references: [id])
+  media   Media   @relation(fields: [mediaId], references: [id])
 
-  @@map("advertisement_packages")
+  @@unique([packageId, mediaId])
+  @@map("package_medias")
+}
+
+model Mission {
+  id              String        @id @default(uuid())
+  advertisementId String        @map("advertisement_id")
+  packageId       String        @unique @map("package_id")
+  initiatorId     String        @map("initiator_id")
+  acceptorId      String?       @map("acceptor_id")
+  negotiatedPrice Decimal       @default(0) @map("negotiated_price")
+  status          MissionStatus @default(PENDING)
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  initiator     User          @relation("Initiator", fields: [initiatorId], references: [id])
+  acceptor      User?         @relation("Acceptor", fields: [acceptorId], references: [id])
+  advertisement Advertisement @relation(fields: [advertisementId], references: [id], onDelete: Cascade)
+  package       Package       @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  transaction   Transaction?
+
+  @@unique([advertisementId, packageId])
+  @@map("missions")
 }
 
 model Advertisement {
   id            String            @id @default(uuid())
-  title         String?
-  description   String?
-  type          AdvertisementType @default(GP)
+  type          AdvertisementType @default(DeliveryOffer)
   price         Decimal           @default(0)
-  currency      Currency          @default(EUR)
+  maxWeight     Decimal           @default(0) @map("max_weight") @db.Decimal(7, 3)
   destinationId String            @map("destination_id")
   departureId   String            @map("departure_id")
   authorId      String            @map("author_id")
+  departureDate DateTime?         @map("departure_date")
+  arrivalDate   DateTime          @map("arrival_date")
   createdAt     DateTime          @default(now()) @map("created_at")
   updatedAt     DateTime          @updatedAt @map("updated_at")
 
-  author       User                   @relation(fields: [authorId], references: [id])
-  transactions Transaction[]
-  destination  Address                @relation("destination", fields: [destinationId], references: [id])
-  departure    Address                @relation("departure", fields: [departureId], references: [id])
-  packages     AdvertisementPackage[]
+  author User @relation(fields: [authorId], references: [id])
+
+  destination   Address        @relation("destination", fields: [destinationId], references: [id])
+  departure     Address        @relation("departure", fields: [departureId], references: [id])
+  missions      Mission[]
+  conversations Conversation[]
 
   @@map("advertisements")
 }
@@ -133,30 +218,75 @@ model Advertisement {
 model Transaction {
   id                   String            @id @default(uuid())
   amount               Decimal
-  method               TransactionMethod @map("transaction_method")
+  method               TransactionMethod @default(CASH) @map("transaction_method")
   status               TransactionStatus @default(PENDING)
-  clientId             String            @map("client_id")
-  sellerId             String            @map("seller_id")
-  advertisementId      String            @map("advertisement_id")
-  packageId            String            @unique @map("package_id")
+  missionId            String            @unique @map("mission_id")
   transactionReference String?           @unique @map("transaction_reference")
   createdAt            DateTime          @default(now()) @map("created_at")
   updatedAt            DateTime          @updatedAt @map("updated_at")
 
-  advertisement Advertisement @relation(fields: [advertisementId], references: [id])
-  package       Package       @relation(fields: [packageId], references: [id])
-  client        User          @relation("TransactionClient", fields: [clientId], references: [id])
-  seller        User          @relation("TransactionSeller", fields: [sellerId], references: [id])
+  mission Mission @relation(fields: [missionId], references: [id])
 
   @@map("transactions")
 }
 
-/// pas encore decider si je vais l'utiliser et revoir le model
-// model Banner {
-//   id        String   @id @default(uuid())
-//   title     String
-//   image     String
-//   link      String
-//   createdAt DateTime @default(now()) @map("created_at")
-//   updatedAt DateTime @updatedAt @map("updated_at")
-// }
+model Conversation {
+  id              String             @id @default(uuid())
+  advertisementId String             @map("advertisement_id")
+  status          ConversationStatus @default(DRAFT)
+  lastMessageId   String?            @unique @map("last_message_id")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  advertisement Advertisement      @relation(fields: [advertisementId], references: [id])
+  messages      Message[]
+  participants  ConversationUser[]
+  lastMessage   Message?           @relation("lastMessage", fields: [lastMessageId], references: [id])
+
+  @@map("conversations")
+}
+
+model ConversationUser {
+  id             String   @id @default(uuid())
+  conversationId String   @map("conversation_id")
+  userId         String   @map("user_id")
+  createdAt      DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id])
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@map("conversation_users")
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  content        String
+  conversationId String   @map("conversation_id")
+  authorId       String   @map("author_id")
+  recipientId    String   @map("receiver_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  conversation                Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  author                      User           @relation("sender", fields: [authorId], references: [id])
+  recipient                   User           @relation("receiver", fields: [recipientId], references: [id])
+  isLastMessageOfConversation Conversation?  @relation("lastMessage")
+  media                       MessageMedia[]
+
+  @@map("messages")
+}
+
+model MessageMedia {
+  id        String   @id @default(uuid())
+  messageId String   @map("message_id")
+  mediaId   String   @map("media_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  message Message @relation(fields: [messageId], references: [id])
+  media   Media   @relation(fields: [mediaId], references: [id])
+
+  @@unique([messageId, mediaId])
+  @@map("message_medias")
+}
