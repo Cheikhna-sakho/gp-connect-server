@@ -5,6 +5,7 @@ import { JwtPayload } from './types/jwt.type';
 import { jwtConstants } from './constants';
 import * as bcrypt from 'bcrypt';
 import { Prisma } from '@prisma/client';
+import { UUID } from 'crypto';
 @Injectable()
 export class AuthService {
   constructor(
@@ -14,7 +15,7 @@ export class AuthService {
   async signAccessTokenJwt(payload: JwtPayload) {
     return this.jwtService.sign(payload, {
       secret: jwtConstants.ACCESS_TOKEN_SECRET,
-      expiresIn: '5min',
+      expiresIn: '3d',
       algorithm: 'RS256',
     });
   }
@@ -25,25 +26,22 @@ export class AuthService {
       algorithm: 'RS256',
     });
   }
-
-  async hashPassword(password: string) {
-    return bcrypt.hash(password, 10);
-  }
   async verifyPassword(password: string, hash: string) {
     return bcrypt.compare(password, hash);
   }
   async login(email: string, password: string) {
+    const errorMessages = 'Invalid email or password.';
     const user = await this.usersService.findBy({ email });
     if (!user) {
-      throw new UnauthorizedException();
+      throw new UnauthorizedException(errorMessages);
     }
     const isPasswordValid = await this.verifyPassword(password, user.password);
     if (!isPasswordValid) {
-      throw new UnauthorizedException();
+      throw new UnauthorizedException(errorMessages);
     }
     delete user.password;
     const payload: JwtPayload = {
-      id: user.id,
+      id: user.id as UUID,
       email: user.email,
       role: user.role,
     };
@@ -52,10 +50,10 @@ export class AuthService {
     return { user, accessToken, refreshToken };
   }
   async register(data: Prisma.UserCreateInput) {
-    data.password = await this.hashPassword(data.password);
     this.usersService.create({ data });
   }
   async refreshToken(user: JwtPayload) {
+    console.log('refreshed');
     return {
       accessToken: await this.signAccessTokenJwt(user),
     };

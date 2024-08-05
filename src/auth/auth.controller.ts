@@ -7,10 +7,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { Prisma } from '@prisma/client';
 import { RefreshTokenGuard } from './guards/refreshToken.guard';
-import { JwtPayload } from './types/jwt.type';
+import { AuthRequest } from 'src/common/types/request.type';
+import { CreateUserDto } from 'src/users/dtos/user.dto';
+import { Public } from 'src/common/decorators/public.decorator';
 
+@Public()
 @Controller('auth')
 export class AuthController {
   constructor(readonly authService: AuthService) {}
@@ -24,12 +26,13 @@ export class AuthController {
     return this.authService.login(email, password);
   }
   @Post('register')
-  register(@Body() data: Prisma.UserCreateInput) {
+  register(@Body() data: CreateUserDto) {
+    console.log(data);
     return this.authService.register(data);
   }
   @UseGuards(RefreshTokenGuard)
   @Post('refresh')
-  refreshToken(@Request() req: { user: JwtPayload }) {
+  refreshToken(@Request() req: AuthRequest) {
     return this.authService.refreshToken(req.user);
   }
 }
