@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from 'src/database/database.service';
+import * as bcrypt from 'bcrypt';
+
 type Find = { where: Prisma.UserWhereInput };
 type FindOne = { where: Prisma.UserWhereInput };
 type FindUnique = Prisma.UserWhereUniqueInput;
@@ -20,6 +22,9 @@ export class UsersService {
   constructor(private readonly databaseService: DatabaseService) {
     this.users = this.databaseService.user;
   }
+  async hashPassword(password: string) {
+    return bcrypt.hash(password, 10);
+  }
   async findBy(where: FindUnique) {
     return this.users.findFirst({ where });
   }
@@ -29,16 +34,54 @@ export class UsersService {
   async findOne({ where }: FindOne) {
     return this.users.findFirst({ where });
   }
+  async findConversations(id: string) {
+    return this.users.findUnique({
+      where: { id },
+      select: {
+        conversations: {
+          include: {
+            conversation: {
+              include: {
+                lastMessage: true,
+                participants: { include: { user: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+  async findPackages(id: string) {
+    return this.users.findFirst({
+      where: { id },
+      select: { packages: true },
+    });
+  }
+  async findAdvertisements(id: string) {
+    return this.users.findFirst({
+      where: { id },
+      select: { advertisements: true },
+    });
+  }
+  async findMissions(id: string) {
+    return this.users.findFirst({
+      where: { id },
+      select: { missions: true },
+    });
+  }
   async findAll() {
     return this.users.findMany();
   }
   async create({ data }: Create) {
+    data.password = await this.hashPassword(data.password);
     return this.users.create({ data });
   }
   async updateWhere({ data, where }: Update) {
+    data.password &&= await this.hashPassword(data.password as string);
     return this.users.update({ where, data });
   }
   async updateById(id: string, data: UpdateBy) {
+    data.password &&= await this.hashPassword(data.password as string);
     return this.users.update({ where: { id }, data });
   }
   async delete(where: Delete) {
