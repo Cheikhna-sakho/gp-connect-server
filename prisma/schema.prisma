@@ -120,7 +120,7 @@ model City {
   name    String
   stateId String @map("state_id")
 
-  state     State?    @relation(fields: [stateId], references: [id])
+  state     State     @relation(fields: [stateId], references: [id])
   addresses Address[]
 
   @@map("cities")
@@ -152,7 +152,7 @@ model Package {
 
   owner   User           @relation(fields: [ownerId], references: [id])
   mission Mission?
-  medias   PackageMedia[]
+  medias  PackageMedia[]
 
   @@map("packages")
 }
