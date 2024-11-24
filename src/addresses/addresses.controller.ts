@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -12,7 +13,8 @@ import { AddressesService } from './addresses.service';
 import { Public } from 'src/common/decorators/public.decorator';
 import { Prisma } from '@prisma/client';
 import { UUID } from 'crypto';
-import { addressesFixtures } from './fixtures/addresses.fixture';
+import { CreateAddressDto } from './dtos/create-address.dto';
+import { ID_PARAM } from 'src/common/constants/route.util.const';
 
 @Public()
 @Controller('addresses')
@@ -24,8 +26,8 @@ export class AddressesController {
     return this.addressesService.findAll();
   }
 
-  @Get(':id')
-  async getById(@Param('id') id: UUID) {
+  @Get(ID_PARAM)
+  async getById(@Param('id', ParseUUIDPipe) id: UUID) {
     return this.addressesService.findBy({ id });
   }
   @Get('where')
@@ -35,23 +37,16 @@ export class AddressesController {
   }
 
   @Post()
-  async create(@Body() data: Prisma.AddressCreateInput) {
+  async create(@Body() data: CreateAddressDto) {
     return this.addressesService.create(data);
   }
-  @Post('fixtures')
-  async createFixture() {
-    for (const address of addressesFixtures) {
-      await this.addressesService.create(address);
-    }
-    return this.getAll();
-  }
 
-  @Patch(':id')
+  @Patch(ID_PARAM)
   async update(@Param('id') id: UUID, @Body() data: Prisma.AddressUpdateInput) {
     return this.addressesService.update({ where: { id }, data });
   }
 
-  @Delete(':id')
+  @Delete(ID_PARAM)
   async delete(@Param('id') id: UUID) {
     return this.addressesService.delete(id);
   }
