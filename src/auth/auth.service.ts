@@ -15,14 +15,14 @@ export class AuthService {
   async signAccessTokenJwt(payload: JwtPayload) {
     return this.jwtService.sign(payload, {
       secret: jwtConstants.ACCESS_TOKEN_SECRET,
-      expiresIn: '3d',
+      expiresIn: process.env.ACCESS_TOKEN_EXP,
       algorithm: 'RS256',
     });
   }
   async signRefreshTokenJwt(payload: JwtPayload) {
     return this.jwtService.sign(payload, {
       secret: jwtConstants.REFRESH_TOKEN_SECRET,
-      expiresIn: '7d',
+      expiresIn: process.env.REFRESH_TOKEN_EXP,
       algorithm: 'RS256',
     });
   }

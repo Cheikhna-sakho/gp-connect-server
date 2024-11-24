@@ -1,26 +1,16 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Post,
-  Request,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RefreshTokenGuard } from './guards/refreshToken.guard';
-import { AuthRequest } from 'src/common/types/request.type';
 import { CreateUserDto } from 'src/users/dtos/user.dto';
 import { Public } from 'src/common/decorators/public.decorator';
+import { GetUser } from 'src/common/decorators/user.decorator';
+import { JwtPayload } from './types/jwt.type';
 
 @Public()
 @Controller('auth')
 export class AuthController {
   constructor(readonly authService: AuthService) {}
 
-  @Get('login')
-  loginG() {
-    return 'this.authService.login(email, password);';
-  }
   @Post('login')
   login(@Body() { email, password }: { email: string; password: string }) {
     return this.authService.login(email, password);
@@ -32,7 +22,7 @@ export class AuthController {
   }
   @UseGuards(RefreshTokenGuard)
   @Post('refresh')
-  refreshToken(@Request() req: AuthRequest) {
-    return this.authService.refreshToken(req.user);
+  refreshToken(@GetUser() user: JwtPayload) {
+    return this.authService.refreshToken(user);
   }
 }
