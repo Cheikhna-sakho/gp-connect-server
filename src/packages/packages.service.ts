@@ -37,6 +37,9 @@ export class PackagesService {
   async findAll() {
     return this.packages.findMany();
   }
+  async findAllByUser(ownerId: string) {
+    return this.packages.findMany({ where: { ownerId } });
+  }
   async create(data: CreatePackageDto) {
     const { images, ownerId, ...rest } = data;
     let medias = {} as Prisma.PackageMediaCreateNestedManyWithoutPackageInput;
