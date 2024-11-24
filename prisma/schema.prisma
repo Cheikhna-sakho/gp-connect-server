@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl"]
 }
 
 datasource db {
@@ -77,7 +78,7 @@ model User {
 model Address {
   id      String  @id @default(uuid())
   street  String?
-  zipCode String? @map("zip_code")
+  zipCode String  @map("zip_code")
   cityId  String  @map("city_id")
 
   //@SOURCE https://stackoverflow.com/questions/1196415/what-datatype-to-use-when-storing-latitude-and-longitude-data-in-sql-databases
@@ -91,6 +92,7 @@ model Address {
   departures   Advertisement[] @relation("departure")
 
   @@unique([latitude, longitude])
+  @@unique([cityId, zipCode])
   @@map("addresses")
 }
 
@@ -116,11 +118,12 @@ model State {
 }
 
 model City {
-  id      String @id @default(uuid())
-  name    String
-  stateId String @map("state_id")
+  id        String  @id @default(uuid())
+  name      String
+  stateId   String? @map("state_id")
+  countryId String  @map("country_id")
 
-  state     State     @relation(fields: [stateId], references: [id])
+  state     State?    @relation(fields: [stateId], references: [id])
   addresses Address[]
 
   @@map("cities")
@@ -140,15 +143,13 @@ model Media {
 }
 
 model Package {
-  id          String     @id @default(uuid())
+  id          String   @id @default(uuid())
   name        String
   description String?
-  // type        String
-  weight      Decimal    @default(0) @db.Decimal(7, 3)
-  weightUnit  WeightUnit @default(KG) @map("weight_unit")
-  ownerId     String     @map("owner_id")
-  createdAt   DateTime   @default(now()) @map("created_at")
-  updatedAt   DateTime   @updatedAt @map("updated_at")
+  weight      Decimal  @default(0) @db.Decimal(7, 3)
+  ownerId     String   @map("owner_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   owner   User           @relation(fields: [ownerId], references: [id])
   mission Mission?
