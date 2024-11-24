@@ -7,18 +7,19 @@ import {
   Patch,
   Post,
   Query,
-  Request,
   UseGuards,
 } from '@nestjs/common';
 import { AdvertisementsService } from './advertisements.service';
 import { DatabaseService } from 'src/database/database.service';
-import { RolesGuard } from 'src/auth/guards/role.guard';
-import { Roles } from 'src/auth/decorators/role.decorator';
 import { UUID } from 'crypto';
-import { AuthRequest } from 'src/common/types/request.type';
-import { CreateAdvertisementDto } from './dtos/advertisements.dto';
 import { AddressesService } from 'src/addresses/addresses.service';
 import { Public } from 'src/common/decorators/public.decorator';
+import { ID_PARAM } from 'src/common/constants/route.util.const';
+import { RolesGuard } from 'src/auth/guards/role.guard';
+import { CreateAdvertisementDto } from './dtos/create-advertisements.dto';
+import { Roles } from 'src/auth/decorators/role.decorator';
+import { GetUserId } from 'src/common/decorators/user.decorator';
+import { CreateAdvertisementWithAddressDto } from './dtos/create-advertisements-with-address.dto';
 
 @Controller('advertisements')
 export class AdvertisementsController {
@@ -33,7 +34,7 @@ export class AdvertisementsController {
     return this.advertisementsService.findAll();
   }
   @Public()
-  @Get(`:id(${ROUTE_UUID_REGEX})`)
+  @Get(ID_PARAM)
   getOne(@Param('id') id: UUID) {
     return this.advertisementsService.findBy({ id });
   }
@@ -43,17 +44,15 @@ export class AdvertisementsController {
     return this.advertisementsService.find({ where: query });
   }
   @Get('mine')
-  getMine(@Request() req: AuthRequest) {
-    const { id: authorId } = req.user;
+  getMine(@GetUserId() authorId: string) {
     return this.advertisementsService.find({ where: { authorId } });
   }
   @UseGuards(RolesGuard)
   @Post('request')
   async createRequest(
-    @Request() req: AuthRequest,
+    @GetUserId() authorId: string,
     @Body() data: CreateAdvertisementDto,
   ) {
-    const { id: authorId } = req.user;
     data.authorId = authorId;
     data.type = 'DeliveryRequest';
     return this.advertisementsService.create(data);
@@ -61,24 +60,36 @@ export class AdvertisementsController {
   @Post()
   @UseGuards(RolesGuard)
   @Roles('ADMIN', 'GP')
-  create(@Request() req: AuthRequest, @Body() data: CreateAdvertisementDto) {
-    const { id: authorId } = req.user;
+  async create(
+    @GetUserId() authorId: string,
+    @Body() data: CreateAdvertisementWithAddressDto,
+  ) {
     data.authorId = authorId;
-
-    return this.advertisementsService.create(data);
+    const { departure, destination, ...dto } = data;
+    const { id: destinationId } = await this.addressService.createIfNotExist(
+      { ...destination },
+      { id: true },
+    );
+    const { id: departureId } = await this.addressService.createIfNotExist(
+      { ...departure },
+      { id: true },
+    );
+    return this.advertisementsService.create({
+      ...dto,
+      destinationId,
+      departureId,
+    });
   }
-  @Patch(`:id(${ROUTE_UUID_REGEX})`)
+  @Patch(ID_PARAM)
   update(
-    @Request() req: AuthRequest,
+    @GetUserId() authorId: string,
     @Body() data: any,
     @Param('id') id: UUID,
   ) {
-    const { id: authorId } = req.user;
     return this.advertisementsService.update({ data, where: { id, authorId } });
   }
-  @Delete(`:id(${ROUTE_UUID_REGEX})`)
-  delete(@Request() req: AuthRequest, @Param('id') id: UUID) {
-    const { id: authorId } = req.user;
+  @Delete(ID_PARAM)
+  delete(@GetUserId() authorId: string, @Param('id') id: UUID) {
     return this.advertisementsService.delete({ where: { id, authorId } });
   }
 }
