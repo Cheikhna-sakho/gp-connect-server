@@ -34,41 +34,6 @@ export class UsersService {
   async findOne({ where }: FindOne) {
     return this.users.findFirst({ where });
   }
-  async findConversations(id: string) {
-    return this.users.findUnique({
-      where: { id },
-      select: {
-        conversations: {
-          include: {
-            conversation: {
-              include: {
-                lastMessage: true,
-                participants: { include: { user: true } },
-              },
-            },
-          },
-        },
-      },
-    });
-  }
-  async findPackages(id: string) {
-    return this.users.findFirst({
-      where: { id },
-      select: { packages: true },
-    });
-  }
-  async findAdvertisements(id: string) {
-    return this.users.findFirst({
-      where: { id },
-      select: { advertisements: true },
-    });
-  }
-  async findMissions(id: string) {
-    return this.users.findFirst({
-      where: { id },
-      select: { missions: true },
-    });
-  }
   async findAll() {
     return this.users.findMany();
   }
