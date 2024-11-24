@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { UUID } from 'crypto';
 import { DatabaseService } from 'src/database/database.service';
+import { CreateMessageDto } from './dtos/message.dto';
 
 @Injectable()
 export class MessagesService {
@@ -16,8 +17,15 @@ export class MessagesService {
   find(where: Prisma.MessageWhereInput) {
     return this.messages.findMany({ where });
   }
-  create(data: Prisma.MessageCreateInput) {
-    return this.messages.create({ data });
+  create(data: CreateMessageDto) {
+    return this.messages.create({
+      data: {
+        content: data.content,
+        conversation: { connect: { id: data.conversationId } },
+        author: { connect: { id: data.authorId } },
+        recipient: { connect: { id: data.recipientId } },
+      },
+    });
   }
   update({
     where,
