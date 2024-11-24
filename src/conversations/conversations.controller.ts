@@ -4,16 +4,15 @@ import {
   Post,
   Patch,
   Delete,
-  Request,
   Param,
   Body,
 } from '@nestjs/common';
 import { ConversationsService } from './conversations.service';
-import { AuthRequest } from 'src/common/types/request.type';
 import { UUID } from 'crypto';
 import { ConversationStatus } from '@prisma/client';
 import { AdvertisementsService } from 'src/advertisements/advertisements.service';
-import { ROUTE_UUID_REGEX } from 'src/common/constants/route.util.const';
+import { ID_PARAM, SetIdParam } from 'src/common/constants/route.util.const';
+import { GetUserId } from 'src/common/decorators/user.decorator';
 
 @Controller('conversations')
 export class ConversationsController {
@@ -23,23 +22,20 @@ export class ConversationsController {
   ) {}
 
   @Get()
-  getAll(@Request() req: AuthRequest) {
-    const { id: userId } = req.user;
+  getAll(@GetUserId() userId: UUID) {
     return this.conversationsService.find({
       participants: { some: { userId: userId } },
     });
   }
-  @Get(`:id(${ROUTE_UUID_REGEX})/messages`)
-  getMessages(@Request() req: AuthRequest, @Param('id') id: UUID) {
-    const { id: userId } = req.user;
+  @Get(`${ID_PARAM}/messages`)
+  getMessages(@GetUserId() userId: UUID, @Param('id') id: UUID) {
     return this.conversationsService.findMessages(id, userId);
   }
-  @Get(`advertisements/:advertisementId(${ROUTE_UUID_REGEX})/messages`)
+  @Get(`advertisements/${SetIdParam('advertisementId')}/messages`)
   async getMessagesByAdvertisement(
-    @Request() req: AuthRequest,
+    @GetUserId() userId: UUID,
     @Param('advertisementId') advertisementId: UUID,
   ) {
-    const { id: userId } = req.user;
     const messages = await this.conversationsService.findOne({
       advertisementId,
       participants: { some: { userId } },
@@ -63,26 +59,24 @@ export class ConversationsController {
     );
   }
   @Post()
-  create(@Request() req: AuthRequest, @Body() data: any) {
-    const { id: userId } = req.user;
+  create(@GetUserId() userId: UUID, @Body() data: any) {
     return this.conversationsService.create({
       participants: { create: [{ userId }, { userId: data.receiverId }] },
       advertisement: { connect: { id: data.advertisementId } },
     });
   }
-  @Patch(':id/status')
+  @Patch(`${ID_PARAM}/status`)
   update(
-    @Request() req: AuthRequest,
+    @GetUserId() userId: UUID,
     @Param('id') id: UUID,
     @Body() status: ConversationStatus,
   ) {
-    const { id: userId } = req.user;
     return this.conversationsService.update({
       where: { id, participants: { some: { userId } } },
       data: { status },
     });
   }
-  @Delete(`:id(${ROUTE_UUID_REGEX})`)
+  @Delete(ID_PARAM)
   delete(@Param('id') id: UUID) {
     return this.conversationsService.delete(id);
   }
