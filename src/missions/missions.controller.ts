@@ -16,8 +16,8 @@ export class MissionsController {
     return this.missionsService.findAll();
   }
   @Get()
-  getUserMissions(@GetUserId() id: UUID) {
-    return this.missionsService.findUserMissions(id);
+  getOwn(@GetUserId() id: UUID) {
+    return this.missionsService.findByUser(id);
   }
   @Post()
   create(@GetUserId() initiatorId: UUID, @Body() data: CreateMissionDto) {

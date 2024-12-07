@@ -50,10 +50,9 @@ export class AuthService {
     return { user, accessToken, refreshToken };
   }
   async register(data: Prisma.UserCreateInput) {
-    this.usersService.create({ data });
+    return this.usersService.create({ data });
   }
   async refreshToken(user: JwtPayload) {
-    console.log('refreshed');
     return {
       accessToken: await this.signAccessTokenJwt(user),
     };

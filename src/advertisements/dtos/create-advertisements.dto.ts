@@ -19,4 +19,7 @@ export class CreateAdvertisementDto
   destinationId: string;
   @IsEmpty()
   type?: $Enums.AdvertisementType;
+  @IsOptional()
+  @IsDecimal()
+  maxWeight?: number;
 }

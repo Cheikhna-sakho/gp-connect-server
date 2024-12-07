@@ -35,7 +35,7 @@ export class MissionsService {
   async find(where: any) {
     return this.missions.findMany({ where });
   }
-  async findUserMissions(userId: UUID) {
+  async findByUser(userId: UUID) {
     return this.missions.findMany({
       where: { initiatorId: userId },
       include: MISSION_WITH_ALL_FIELDS,

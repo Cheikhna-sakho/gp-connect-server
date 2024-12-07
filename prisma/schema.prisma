@@ -1,12 +1,10 @@
 generator client {
   provider      = "prisma-client-js"
-  binaryTargets = ["native", "linux-musl"]
 }
 
 datasource db {
   provider          = "postgresql"
   url               = env("DATABASE_URL")
-  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 enum Role {
@@ -21,11 +19,6 @@ enum TransactionMethod {
   PAYPAL      @map("paypal")
 }
 
-enum WeightUnit {
-  KG @map("kg")
-  G  @map("g")
-}
-
 enum TransactionStatus {
   PENDING   @map("pending")
   COMPLETED @map("completed")
@@ -37,8 +30,6 @@ enum MissionStatus {
   ACCEPTED   @map("accepted")
   PICKED_UP  @map("picked_up")
   IN_TRANSIT @map("in_transit")
-  // idk if we need these two, 
-  DELIVERED  @map("delivered")
   COMPLETED  @map("completed")
 }
 
@@ -64,24 +55,22 @@ model User {
   updatedAt DateTime @updatedAt @map("updated_at")
   avatar    String?
 
-  advertisements   Advertisement[]
-  packages         Package[]
-  missions         Mission[]          @relation("Initiator")
-  acceptedMissions Mission[]          @relation("Acceptor")
-  sentMessages     Message[]          @relation("sender")
-  receivedMessages Message[]          @relation("receiver")
-  conversations    ConversationUser[]
+  advertisements         Advertisement[]
+  packages               Package[]
+  missions               Mission[]       @relation("Initiator")
+  acceptedMissions       Mission[]       @relation("Acceptor")
+  messages               Message[]       @relation("sender")
+  ConversationsAsShipper Conversation[]  @relation("shipper")
+  ConversationsAsCarrier Conversation[]  @relation("carrier")
 
   @@map("users")
 }
 
 model Address {
-  id      String  @id @default(uuid())
-  street  String?
-  zipCode String  @map("zip_code")
-  cityId  String  @map("city_id")
-
-  //@SOURCE https://stackoverflow.com/questions/1196415/what-datatype-to-use-when-storing-latitude-and-longitude-data-in-sql-databases
+  id        String   @id @default(uuid())
+  street    String?
+  zipCode   String   @map("zip_code")
+  cityId    String   @map("city_id")
   latitude  Decimal? @db.Decimal(8, 6)
   longitude Decimal? @db.Decimal(9, 6)
   createdAt DateTime @default(now()) @map("created_at")
@@ -102,6 +91,7 @@ model Country {
   isoCode String @map("iso_code")
 
   states State[]
+  cities City[]
 
   @@map("countries")
 }
@@ -124,6 +114,7 @@ model City {
   countryId String  @map("country_id")
 
   state     State?    @relation(fields: [stateId], references: [id])
+  country   Country   @relation(fields: [countryId], references: [id])
   addresses Address[]
 
   @@map("cities")
@@ -133,11 +124,12 @@ model Media {
   id        String   @id @default(uuid())
   url       String
   type      String
+  metadata  Json?
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  packages     PackageMedia[]
-  MessageMedia MessageMedia[]
+  packages PackageMedia[]
+  messages Message[]
 
   @@map("medias")
 }
@@ -232,62 +224,33 @@ model Transaction {
 }
 
 model Conversation {
-  id              String             @id @default(uuid())
-  advertisementId String             @map("advertisement_id")
-  status          ConversationStatus @default(DRAFT)
-  lastMessageId   String?            @unique @map("last_message_id")
-  createdAt       DateTime           @default(now()) @map("created_at")
-  updatedAt       DateTime           @updatedAt @map("updated_at")
+  id              String   @id @default(uuid())
+  advertisementId String   @map("advertisement_id")
+  shipperId       String
+  carrierId       String
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
-  advertisement Advertisement      @relation(fields: [advertisementId], references: [id])
+  advertisement Advertisement @relation(fields: [advertisementId], references: [id])
   messages      Message[]
-  participants  ConversationUser[]
-  lastMessage   Message?           @relation("lastMessage", fields: [lastMessageId], references: [id])
+  shipper       User          @relation("shipper", fields: [shipperId], references: [id])
+  carrier       User          @relation("carrier", fields: [carrierId], references: [id])
 
   @@map("conversations")
-}
-
-model ConversationUser {
-  id             String   @id @default(uuid())
-  conversationId String   @map("conversation_id")
-  userId         String   @map("user_id")
-  createdAt      DateTime @default(now())
-
-  user         User         @relation(fields: [userId], references: [id])
-  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-
-  @@unique([conversationId, userId])
-  @@map("conversation_users")
 }
 
 model Message {
   id             String   @id @default(uuid())
   content        String
   conversationId String   @map("conversation_id")
+  mediaId        String?
   authorId       String   @map("author_id")
-  recipientId    String   @map("receiver_id")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  conversation                Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  author                      User           @relation("sender", fields: [authorId], references: [id])
-  recipient                   User           @relation("receiver", fields: [recipientId], references: [id])
-  isLastMessageOfConversation Conversation?  @relation("lastMessage")
-  media                       MessageMedia[]
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  author       User         @relation("sender", fields: [authorId], references: [id])
+  media        Media?       @relation(fields: [mediaId], references: [id])
 
   @@map("messages")
-}
-
-model MessageMedia {
-  id        String   @id @default(uuid())
-  messageId String   @map("message_id")
-  mediaId   String   @map("media_id")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  message Message @relation(fields: [messageId], references: [id])
-  media   Media   @relation(fields: [mediaId], references: [id])
-
-  @@unique([messageId, mediaId])
-  @@map("message_medias")
 }

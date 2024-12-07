@@ -23,7 +23,6 @@ export class MessagesService {
         content: data.content,
         conversation: { connect: { id: data.conversationId } },
         author: { connect: { id: data.authorId } },
-        recipient: { connect: { id: data.recipientId } },
       },
     });
   }

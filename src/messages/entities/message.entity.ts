@@ -1,17 +1,25 @@
 import { Message } from '@prisma/client';
-import { Type } from 'class-transformer';
+import { Expose, Type } from 'class-transformer';
 
 export class MessageEntity implements Message {
-  id: string;
-  content: string;
-  conversationId: string;
-  authorId: string;
-  recipientId: string;
+  @Expose() id: string;
+
+  @Expose() content: string;
+
+  @Expose() conversationId: string;
+
+  @Expose() authorId: string;
 
   @Type(() => Date)
+  @Expose()
   createdAt: Date;
+
   @Type(() => Date)
+  @Expose()
   updatedAt: Date;
+
+  mediaId: string;
+
   constructor(partial: Partial<MessageEntity>) {
     Object.assign(this, partial);
   }

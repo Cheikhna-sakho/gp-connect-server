@@ -1,21 +1,32 @@
 import { $Enums, Prisma, User } from '@prisma/client';
 import { Exclude } from 'class-transformer';
-import { IsEmail, IsNotEmpty, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsStrongPassword,
+  MinLength,
+} from 'class-validator';
 
 export class CreateUserDto implements Prisma.UserCreateInput {
   @IsNotEmpty()
-  name: string;
-  @IsNotEmpty()
   @IsEmail()
   email: string;
-  @MinLength(8)
+
   @IsNotEmpty()
-  // @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d]{8,}$/,)
+  @IsStrongPassword()
   password: string;
+
   @IsNotEmpty()
   firstName: string;
+
   @IsNotEmpty()
   lastName: string;
+
+  @IsEnum($Enums.Role)
+  @IsOptional()
+  role?: $Enums.Role;
 }
 export class UpdateUserDto implements Prisma.UserUpdateInput {
   name: string;

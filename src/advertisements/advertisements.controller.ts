@@ -20,6 +20,8 @@ import { CreateAdvertisementDto } from './dtos/create-advertisements.dto';
 import { Roles } from 'src/auth/decorators/role.decorator';
 import { GetUserId } from 'src/common/decorators/user.decorator';
 import { CreateAdvertisementWithAddressDto } from './dtos/create-advertisements-with-address.dto';
+import { AdvertisementEntity } from './entities/advertisement.entity';
+import { Serialize } from 'src/common/decorators/serialize.decorator';
 
 @Controller('advertisements')
 export class AdvertisementsController {
@@ -30,11 +32,13 @@ export class AdvertisementsController {
   ) {}
   @Public()
   @Get()
-  getAll() {
+  @Serialize(AdvertisementEntity)
+  async getAll() {
     return this.advertisementsService.findAll();
   }
   @Public()
   @Get(ID_PARAM)
+  @Serialize(AdvertisementEntity)
   getOne(@Param('id') id: UUID) {
     return this.advertisementsService.findBy({ id });
   }
@@ -44,8 +48,9 @@ export class AdvertisementsController {
     return this.advertisementsService.find({ where: query });
   }
   @Get('mine')
-  getMine(@GetUserId() authorId: string) {
-    return this.advertisementsService.find({ where: { authorId } });
+  @Serialize(AdvertisementEntity)
+  async getMine(@GetUserId() authorId: string) {
+    return this.advertisementsService.findAll({ authorId });
   }
   @UseGuards(RolesGuard)
   @Post('request')

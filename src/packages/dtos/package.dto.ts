@@ -12,7 +12,7 @@ export class CreatePackageDto implements Prisma.PackageUncheckedCreateInput {
   @IsEmpty()
   ownerId: string;
   @IsOptional()
-  images: Express.Multer.File[];
+  images?: Express.Multer.File[];
 }
 
 export class CreatePackageImagesDto {

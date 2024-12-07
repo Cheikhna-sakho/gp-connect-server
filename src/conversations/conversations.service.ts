@@ -14,25 +14,22 @@ export class ConversationsService {
   findBy(where: Prisma.ConversationWhereUniqueInput) {
     return this.conversations.findUnique({ where });
   }
-  findMessages(id: UUID, userId: UUID) {
-    return this.conversations.findUnique({
-      where: { id, participants: { some: { userId } } },
+
+  findAll(where: Prisma.ConversationWhereInput) {
+    return this.conversations.findMany({
+      where,
       include: {
-        messages: true,
-        participants: { include: { user: true } },
-        advertisement: true,
+        shipper: true,
+        carrier: true,
+        messages: { orderBy: { createdAt: 'desc' }, take: 1 },
       },
     });
-  }
-  find(where: Prisma.ConversationWhereInput) {
-    return this.conversations.findMany({ where });
   }
   findOne(where: Prisma.ConversationWhereInput) {
     return this.conversations.findFirst({
       where,
       include: {
         messages: true,
-        participants: { include: { user: true } },
         advertisement: true,
       },
     });

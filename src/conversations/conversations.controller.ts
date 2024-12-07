@@ -2,17 +2,20 @@ import {
   Controller,
   Get,
   Post,
-  Patch,
   Delete,
   Param,
   Body,
+  Query,
+  BadRequestException,
 } from '@nestjs/common';
 import { ConversationsService } from './conversations.service';
 import { UUID } from 'crypto';
-import { ConversationStatus } from '@prisma/client';
-import { AdvertisementsService } from 'src/advertisements/advertisements.service';
-import { ID_PARAM, SetIdParam } from 'src/common/constants/route.util.const';
+import { ID_PARAM } from 'src/common/constants/route.util.const';
 import { GetUserId } from 'src/common/decorators/user.decorator';
+import { Serialize } from 'src/common/decorators/serialize.decorator';
+import { ConversationEntity } from './entities/conversation.entity';
+import { CreateConversationDto } from './dtos/create-conversation.dto';
+import { AdvertisementsService } from 'src/advertisements/advertisements.service';
 
 @Controller('conversations')
 export class ConversationsController {
@@ -22,60 +25,54 @@ export class ConversationsController {
   ) {}
 
   @Get()
+  @Serialize(ConversationEntity)
   getAll(@GetUserId() userId: UUID) {
-    return this.conversationsService.find({
-      participants: { some: { userId: userId } },
+    return this.conversationsService.findAll({
+      OR: [{ shipperId: userId }, { carrierId: userId }],
     });
   }
-  @Get(`${ID_PARAM}/messages`)
-  getMessages(@GetUserId() userId: UUID, @Param('id') id: UUID) {
-    return this.conversationsService.findMessages(id, userId);
+
+  @Get(ID_PARAM)
+  async getById(@GetUserId() userId: UUID, @Param('id') id: UUID) {
+    return this.conversationsService.findBy({ id });
   }
-  @Get(`advertisements/${SetIdParam('advertisementId')}/messages`)
-  async getMessagesByAdvertisement(
-    @GetUserId() userId: UUID,
-    @Param('advertisementId') advertisementId: UUID,
+  @Get('by')
+  @Serialize(ConversationEntity)
+  async getByAdvertisement(
+    @GetUserId() currentUserId: UUID,
+    @Query()
+    query: { advertisementId?: UUID; conversationId?: UUID; userId?: UUID },
   ) {
-    const messages = await this.conversationsService.findOne({
-      advertisementId,
-      participants: { some: { userId } },
-    });
-    if (messages) {
-      return messages;
+    const { advertisementId, conversationId: id, userId } = query ?? {};
+    if (!advertisementId && !id) {
+      throw new BadRequestException(
+        'advertisementId or conversationId should be defined',
+      );
     }
-    const advertisement = await this.advertisementsService.findOne({
-      where: { id: advertisementId },
-      select: { authorId: true },
+    if (advertisementId && !userId) {
+      throw new BadRequestException('advertisementId should be with userId');
+    }
+
+    return this.conversationsService.findOne({
+      id,
+      advertisementId,
+      OR: [
+        { shipperId: userId, carrierId: currentUserId },
+        { shipperId: currentUserId, carrierId: userId },
+      ],
     });
-    if (!advertisement) return null;
-    return this.conversationsService.create(
-      {
-        participants: {
-          create: [{ userId }, { userId: advertisement.authorId }],
-        },
-        advertisement: { connect: { id: advertisementId } },
-      },
-      { messages: true, participants: true },
-    );
   }
   @Post()
-  create(@GetUserId() userId: UUID, @Body() data: any) {
+  @Serialize(ConversationEntity)
+  create(@Body() data: CreateConversationDto) {
+    const { advertisementId, shipperId, carrierId } = data;
     return this.conversationsService.create({
-      participants: { create: [{ userId }, { userId: data.receiverId }] },
-      advertisement: { connect: { id: data.advertisementId } },
+      advertisement: { connect: { id: advertisementId } },
+      shipper: { connect: { id: shipperId } },
+      carrier: { connect: { id: carrierId } },
     });
   }
-  @Patch(`${ID_PARAM}/status`)
-  update(
-    @GetUserId() userId: UUID,
-    @Param('id') id: UUID,
-    @Body() status: ConversationStatus,
-  ) {
-    return this.conversationsService.update({
-      where: { id, participants: { some: { userId } } },
-      data: { status },
-    });
-  }
+
   @Delete(ID_PARAM)
   delete(@Param('id') id: UUID) {
     return this.conversationsService.delete(id);

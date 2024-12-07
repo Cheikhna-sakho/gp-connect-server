@@ -21,16 +21,18 @@ export class AddressesService {
     this.state = this.databaseService.state;
   }
   async findAll() {
-    return this.address.findMany();
+    return this.address.findMany({ include: { city: true } });
   }
   async findBy(where: Prisma.AddressWhereUniqueInput) {
     return this.address.findUnique({
       where,
+      include: { city: { include: { country: true } } },
     });
   }
   async findOne({ where }: { where: Prisma.AddressWhereInput }) {
     return this.address.findFirst({
       where,
+      include: { city: true },
     });
   }
 
