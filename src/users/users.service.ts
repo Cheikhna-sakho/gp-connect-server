@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from 'src/database/database.service';
 import * as bcrypt from 'bcrypt';
+import { UpdateUserDto } from './dtos/user.dto';
 
 type Find = { where: Prisma.UserWhereInput };
 type FindOne = { where: Prisma.UserWhereInput };
@@ -11,7 +12,6 @@ type Update = {
   data: Prisma.UserUpdateInput;
   where: Prisma.UserWhereUniqueInput;
 };
-type UpdateBy = Prisma.UserUpdateInput;
 
 type Delete = { where: Prisma.UserWhereUniqueInput };
 
@@ -45,7 +45,7 @@ export class UsersService {
     data.password &&= await this.hashPassword(data.password as string);
     return this.users.update({ where, data });
   }
-  async updateById(id: string, data: UpdateBy) {
+  async updateById(id: string, data: UpdateUserDto) {
     data.password &&= await this.hashPassword(data.password as string);
     return this.users.update({ where: { id }, data });
   }

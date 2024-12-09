@@ -7,23 +7,25 @@ import {
   Param,
   UseGuards,
   NotFoundException,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
-import { Prisma } from '@prisma/client';
 import { UUID } from 'crypto';
 import { RolesGuard } from 'src/auth/guards/role.guard';
 import { Roles } from 'src/auth/decorators/role.decorator';
 import { Public } from 'src/common/decorators/public.decorator';
 import { ID_PARAM } from 'src/common/constants/route.util.const';
 import { GetUserId } from 'src/common/decorators/user.decorator';
+import { Serialize } from 'src/common/decorators/serialize.decorator';
+import { UserEntity } from './entities/user.entity';
+import { UpdateUserDto } from './dtos/user.dto';
 
 @Controller('users')
 export class UsersController {
   constructor(readonly usersService: UsersService) {}
-  @Get()
-  getUsers() {
-    return this.usersService.findAll();
-  }
+
+  @Serialize(UserEntity)
   @Public()
   @Get(ID_PARAM)
   getOneUser(@Param('id') id: UUID) {
@@ -34,21 +36,26 @@ export class UsersController {
     return user;
   }
   @Get('me')
-  getMe(@GetUserId() id: string) {
+  @Serialize(UserEntity)
+  getMe(@GetUserId() id: UUID) {
     return this.usersService.findOne({ where: { id } });
   }
 
+  @HttpCode(HttpStatus.NO_CONTENT)
   @Patch()
-  update(@GetUserId() id: string, @Body() data: Prisma.UserUpdateInput) {
-    return this.usersService.updateById(id, data);
-  }
-  @UseGuards(RolesGuard)
-  @Roles('ADMIN')
-  @Patch(ID_PARAM)
-  updateUser(@Param('id') id: UUID, @Body() data: Prisma.UserUpdateInput) {
+  update(@GetUserId() id: UUID, @Body() data: UpdateUserDto) {
     return this.usersService.updateById(id, data);
   }
 
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  @Patch(ID_PARAM)
+  updateUser(@Param('id') id: UUID, @Body() data: UpdateUserDto) {
+    return this.usersService.updateById(id, data);
+  }
+
+  @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(RolesGuard)
   @Roles('ADMIN')
   @Delete(ID_PARAM)
