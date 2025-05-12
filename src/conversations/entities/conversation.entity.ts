@@ -21,7 +21,8 @@ export class ConversationEntity implements Conversation {
   advertisement?: Advertisement;
 
   @Type(() => MessageEntity)
-  messages?: MessageEntity;
+  @Expose()
+  messages?: MessageEntity[];
 
   @Type(() => UserEntity)
   @Expose()

@@ -1,25 +1,13 @@
-import { $Enums, Prisma } from '@prisma/client';
-import { IsDate, IsDecimal, IsEmpty, IsOptional } from 'class-validator';
+import { IsEmpty, IsOptional } from 'class-validator';
+import { AdvertisementDto } from './advertisement.dto';
+import { Decimal } from '@prisma/client/runtime/library';
 
-export class CreateAdvertisementDto
-  implements Prisma.AdvertisementUncheckedCreateInput
-{
-  @IsEmpty()
-  authorId: string;
+export class CreateAdvertisementDto extends AdvertisementDto {
   @IsOptional()
-  @IsDate()
-  departureDate?: string | Date;
-  @IsDate()
-  arrivalDate: string | Date;
-  @IsDecimal()
-  price: number;
+  maxWeight: Decimal;
+
   @IsEmpty()
   departureId: string;
   @IsEmpty()
   destinationId: string;
-  @IsEmpty()
-  type?: $Enums.AdvertisementType;
-  @IsOptional()
-  @IsDecimal()
-  maxWeight?: number;
 }

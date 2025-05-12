@@ -2,32 +2,39 @@ import {
   Body,
   Controller,
   Delete,
+  // FileTypeValidator,
   Get,
+  // MaxFileSizeValidator,
   NotFoundException,
   Param,
+  ParseFilePipe,
   Patch,
   Post,
-  UseGuards,
+  UploadedFiles,
+  UseInterceptors,
+  // UseGuards,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
 import { PackagesService } from './packages.service';
 import { UUID } from 'crypto';
-import { RolesGuard } from 'src/auth/guards/role.guard';
-import { Roles } from 'src/auth/decorators/role.decorator';
+// import { RolesGuard } from 'src/auth/guards/role.guard';
+// import { Roles } from 'src/auth/decorators/role.decorator';
 import { Public } from 'src/common/decorators/public.decorator';
 import { CreatePackageDto } from './dtos/package.dto';
 import { ID_PARAM } from 'src/common/constants/route.util.const';
 import { GetUserId } from 'src/common/decorators/user.decorator';
 import { Serialize } from 'src/common/decorators/serialize.decorator';
 import { PackageEntity } from './entities/package.entity';
+import { FilesInterceptor } from '@nestjs/platform-express';
 
 @Controller('packages')
 export class PackagesController {
   constructor(private readonly packagesService: PackagesService) {}
-  @UseGuards(RolesGuard)
-  @Roles('ADMIN')
+  // @UseGuards(RolesGuard)
+  // @Roles('ADMIN')
   @Get('/all')
+  @Public()
   @Serialize(PackageEntity)
   getAll() {
     return this.packagesService.findAll();
@@ -53,9 +60,23 @@ export class PackagesController {
     data.ownerId = ownerId;
     return this.packagesService.create(data);
   }
+  @Public()
+  @UseInterceptors(FilesInterceptor('images'))
   @Post(`${ID_PARAM}/images`)
-  createImages(@Body() data: any) {
-    return this.packagesService.createImage(data);
+  createImages(
+    @Param('id') id: UUID,
+    @UploadedFiles(
+      new ParseFilePipe({
+        validators: [
+          // new MaxFileSizeValidator({ maxSize: 3000 }),
+          // new FileTypeValidator({ fileType: /^image/ }),
+        ],
+      }),
+    )
+    images: Express.Multer.File[],
+  ) {
+    console.log({ images });
+    return this.packagesService.createImage(id, images);
   }
   @Patch(ID_PARAM)
   update(@GetUserId() ownerId: UUID, @Param('id') id: UUID, @Body() data: any) {

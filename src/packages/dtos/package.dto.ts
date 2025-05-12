@@ -11,8 +11,6 @@ export class CreatePackageDto implements Prisma.PackageUncheckedCreateInput {
   weight: string | number | Prisma.Decimal | DecimalJsLike;
   @IsEmpty()
   ownerId: string;
-  @IsOptional()
-  images?: Express.Multer.File[];
 }
 
 export class CreatePackageImagesDto {

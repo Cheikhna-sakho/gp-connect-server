@@ -3,12 +3,16 @@ import { Prisma } from '@prisma/client';
 import { UUID } from 'crypto';
 import { DatabaseService } from 'src/database/database.service';
 import { CreateMessageDto } from './dtos/message.dto';
+import { MediasService } from 'src/medias/medias.service';
 
 @Injectable()
 export class MessagesService {
   private messages: DatabaseService['message'];
 
-  constructor(private readonly databaseService: DatabaseService) {
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly mediasService: MediasService,
+  ) {
     this.messages = this.databaseService.message;
   }
   findBy(where: Prisma.MessageWhereUniqueInput) {
@@ -17,7 +21,8 @@ export class MessagesService {
   find(where: Prisma.MessageWhereInput) {
     return this.messages.findMany({ where });
   }
-  create(data: CreateMessageDto) {
+
+  create(data: Omit<CreateMessageDto, 'advertisementId'>) {
     return this.messages.create({
       data: {
         content: data.content,
@@ -26,6 +31,10 @@ export class MessagesService {
       },
     });
   }
+  async createAudio(audio: Express.Multer.File) {
+    return this.mediasService.createAudio(audio);
+  }
+
   update({
     where,
     data,

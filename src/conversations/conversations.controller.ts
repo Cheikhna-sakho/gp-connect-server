@@ -33,6 +33,7 @@ export class ConversationsController {
   }
 
   @Get(ID_PARAM)
+  @Serialize(ConversationEntity)
   async getById(@GetUserId() userId: UUID, @Param('id') id: UUID) {
     return this.conversationsService.findBy({ id });
   }

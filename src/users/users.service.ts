@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client';
 import { DatabaseService } from 'src/database/database.service';
 import * as bcrypt from 'bcrypt';
 import { UpdateUserDto } from './dtos/user.dto';
+import { MediasService } from 'src/medias/medias.service';
+import { UUID } from 'crypto';
 
 type Find = { where: Prisma.UserWhereInput };
 type FindOne = { where: Prisma.UserWhereInput };
@@ -18,14 +20,28 @@ type Delete = { where: Prisma.UserWhereUniqueInput };
 @Injectable()
 export class UsersService {
   private users: DatabaseService['user'];
+  private avatar: DatabaseService['userAvatar'];
 
-  constructor(private readonly databaseService: DatabaseService) {
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly mediasService: MediasService,
+  ) {
     this.users = this.databaseService.user;
   }
   async hashPassword(password: string) {
     return bcrypt.hash(password, 10);
   }
+  async create({ data }: Create) {
+    data.password = await this.hashPassword(data.password);
+    return this.users.create({ data });
+  }
+  async createAvatar(userId: UUID, image: Express.Multer.File) {
+    const avatar = await this.mediasService.createImage(image);
+    await this.avatar.create({ data: { imageId: avatar.id, userId } });
+    return avatar;
+  }
   async findBy(where: FindUnique) {
+    // console.log({ where });
     return this.users.findFirst({ where });
   }
   async find({ where }: Find) {
@@ -36,10 +52,6 @@ export class UsersService {
   }
   async findAll() {
     return this.users.findMany();
-  }
-  async create({ data }: Create) {
-    data.password = await this.hashPassword(data.password);
-    return this.users.create({ data });
   }
   async updateWhere({ data, where }: Update) {
     data.password &&= await this.hashPassword(data.password as string);

@@ -1,8 +1,15 @@
-import { Package } from '@prisma/client';
+import { $Enums, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
-import { Expose, Type } from 'class-transformer';
+import { Expose, Transform, Type } from 'class-transformer';
 
-export class PackageEntity implements Package {
+type PackageMedia = Prisma.PackageMediaGetPayload<{ include: { media: true } }>;
+
+type PackageWithIncludes = Prisma.PackageGetPayload<{
+  include: {
+    images: { include: { media: true } };
+  };
+}>;
+export class PackageEntity implements PackageWithIncludes {
   @Expose() id: string;
 
   @Expose() name: string;
@@ -22,8 +29,18 @@ export class PackageEntity implements Package {
   @Type(() => Date)
   @Expose()
   updatedAt: Date;
+  @Expose()
+  @Transform(({ value }) => {
+    if (typeof value?.[0] === 'string') {
+      return value;
+    }
+    return value?.map(({ media }) => media.url);
+  })
+  images: PackageMedia[];
 
-  constructor(partial: Partial<PackageEntity>) {
+  @Expose() status: $Enums.PackageStatus;
+  constructor(partial: Partial<PackageWithIncludes>) {
+    console.log({ m: partial });
     Object.assign(this, partial);
   }
 }

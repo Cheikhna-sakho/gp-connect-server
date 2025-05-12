@@ -9,6 +9,8 @@ import {
   NotFoundException,
   HttpCode,
   HttpStatus,
+  Post,
+  UseInterceptors,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UUID } from 'crypto';
@@ -20,6 +22,7 @@ import { GetUserId } from 'src/common/decorators/user.decorator';
 import { Serialize } from 'src/common/decorators/serialize.decorator';
 import { UserEntity } from './entities/user.entity';
 import { UpdateUserDto } from './dtos/user.dto';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 @Controller('users')
 export class UsersController {
@@ -39,6 +42,13 @@ export class UsersController {
   @Serialize(UserEntity)
   getMe(@GetUserId() id: UUID) {
     return this.usersService.findOne({ where: { id } });
+  }
+
+  @Post('avatar')
+  @Serialize(UserEntity)
+  @UseInterceptors(FileInterceptor('avatar'))
+  avatar(@GetUserId() id: UUID, avatar: Express.Multer.File) {
+    return this.usersService.createAvatar(id, avatar);
   }
 
   @HttpCode(HttpStatus.NO_CONTENT)

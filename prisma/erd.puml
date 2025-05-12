@@ -1,0 +1,908 @@
+@startuml erd
+skinparam linetype ortho
+enum "Role" as Role {
+  USER: user
+  ADMIN: admin
+  GP: gp
+}
+enum "TransactionMethod" as TransactionMethod {
+  CASH: cash
+  CREDIT_CARD: credit_card
+  PAYPAL: paypal
+}
+enum "TransactionStatus" as TransactionStatus {
+  PENDING: pending
+  COMPLETED: completed
+  CANCELLED: cancelled
+}
+enum "MissionStatus" as MissionStatus {
+  PENDING: pending
+  ACCEPTED: accepted
+  PICKED_UP: picked_up
+  IN_TRANSIT: in_transit
+  COMPLETED: completed
+}
+enum "AdvertisementType" as AdvertisementType {
+  DeliveryRequest: delivery_request
+  DeliveryOffer: delivery_offer
+}
+enum "ConversationStatus" as ConversationStatus {
+  DRAFT: draft
+  ARCHIVED: archived
+  ACTIVE: active
+}
+entity "User" as User {
++ id [PK] : String 
+--
+  * email : [UK] String
+  * firstName : String
+  * lastName : String
+  * password : String
+  * role : Role
+  * createdAt : DateTime
+  * updatedAt : DateTime
+  avatar : String
+}
+
+entity "Address" as Address {
++ id [PK] : String 
+--
+  street : String
+  * zipCode : String
+  # cityId : [FK] City
+  latitude : Decimal
+  longitude : Decimal
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Country" as Country {
++ id [PK] : String 
+--
+  * name : String
+  * isoCode : String
+}
+
+entity "State" as State {
++ id [PK] : String 
+--
+  * name : String
+  # countryId : [FK] Country
+}
+
+entity "City" as City {
++ id [PK] : String 
+--
+  * name : String
+  # stateId : [FK] State
+  # countryId : [FK] Country
+}
+
+entity "Media" as Media {
++ id [PK] : String 
+--
+  * url : String
+  * type : String
+  metadata : Json
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Package" as Package {
++ id [PK] : String 
+--
+  * name : String
+  description : String
+  * weight : Decimal
+  # ownerId : [FK] User
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "PackageMedia" as PackageMedia {
++ id [PK] : String 
+--
+  # packageId : [FK] Package
+  # mediaId : [FK] Media
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Mission" as Mission {
++ id [PK] : String 
+--
+  # advertisementId : [FK] Advertisement
+  # packageId : [UK] [FK] Package
+  # initiatorId : [FK] User
+  # acceptorId : [FK] User
+  * negotiatedPrice : Decimal
+  * status : MissionStatus
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Advertisement" as Advertisement {
++ id [PK] : String 
+--
+  * type : AdvertisementType
+  * price : Decimal
+  * maxWeight : Decimal
+  # destinationId : [FK] Address
+  # departureId : [FK] Address
+  # authorId : [FK] User
+  departureDate : DateTime
+  * arrivalDate : DateTime
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Transaction" as Transaction {
++ id [PK] : String 
+--
+  * amount : Decimal
+  * method : TransactionMethod
+  * status : TransactionStatus
+  # missionId : [UK] [FK] Mission
+  transactionReference : [UK] String
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Conversation" as Conversation {
++ id [PK] : String 
+--
+  # advertisementId : [FK] Advertisement
+  # shipperId : [FK] User
+  # carrierId : [FK] User
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Message" as Message {
++ id [PK] : String 
+--
+  * content : String
+  # conversationId : [FK] Conversation
+  # mediaId : [FK] Media
+  # authorId : [FK] User
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+' Relations
+Address }o--|| City: cityId
+State }o--|| Country: countryId
+City }o--o| State: stateId
+City }o--|| Country: countryId
+Package }o--|| User: ownerId
+PackageMedia }o--|| Package: packageId
+PackageMedia }o--|| Media: mediaId
+Mission }o--|| User: initiatorId
+Mission }o--o| User: acceptorId
+Mission }o--|| Advertisement: advertisementId
+Mission |o--|| Package: packageId
+Advertisement }o--|| User: authorId
+Advertisement }o--|| Address: destinationId
+Advertisement }o--|| Address: departureId
+Transaction |o--|| Mission: missionId
+Conversation }o--|| Advertisement: advertisementId
+Conversation }o--|| User: shipperId
+Conversation }o--|| User: carrierId
+Message }o--|| Conversation: conversationId
+Message }o--|| User: authorId
+Message }o--o| Media: mediaId
+' ManyToMany Relations
+' enum relations
+User |o--|| Role
+Mission |o--|| MissionStatus
+Advertisement |o--|| AdvertisementType
+Transaction |o--|| TransactionMethod
+Transaction |o--|| TransactionStatus
+@enduml
+@startuml User
+skinparam linetype ortho
+enum "Role" as Role {
+  USER: user
+  ADMIN: admin
+  GP: gp
+}
+entity "User" as User {
++ id [PK] : String 
+--
+  * email : [UK] String
+  * firstName : String
+  * lastName : String
+  * password : String
+  * role : Role
+  * createdAt : DateTime
+  * updatedAt : DateTime
+  avatar : String
+}
+
+entity "Package" as Package {
++ id [PK] : String 
+--
+  * name : String
+  description : String
+  * weight : Decimal
+  # ownerId : [FK] User
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Mission" as Mission {
++ id [PK] : String 
+--
+  # advertisementId : [FK] Advertisement
+  # packageId : [UK] [FK] Package
+  # initiatorId : [FK] User
+  # acceptorId : [FK] User
+  * negotiatedPrice : Decimal
+  * status : MissionStatus
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Advertisement" as Advertisement {
++ id [PK] : String 
+--
+  * type : AdvertisementType
+  * price : Decimal
+  * maxWeight : Decimal
+  # destinationId : [FK] Address
+  # departureId : [FK] Address
+  # authorId : [FK] User
+  departureDate : DateTime
+  * arrivalDate : DateTime
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Conversation" as Conversation {
++ id [PK] : String 
+--
+  # advertisementId : [FK] Advertisement
+  # shipperId : [FK] User
+  # carrierId : [FK] User
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Message" as Message {
++ id [PK] : String 
+--
+  * content : String
+  # conversationId : [FK] Conversation
+  # mediaId : [FK] Media
+  # authorId : [FK] User
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+' Relations
+Package }o--|| User: ownerId
+Mission }o--|| User: initiatorId
+Mission }o--o| User: acceptorId
+Mission }o--|| Advertisement: advertisementId
+Mission |o--|| Package: packageId
+Advertisement }o--|| User: authorId
+Conversation }o--|| Advertisement: advertisementId
+Conversation }o--|| User: shipperId
+Conversation }o--|| User: carrierId
+Message }o--|| Conversation: conversationId
+Message }o--|| User: authorId
+' ManyToMany Relations
+' enum relations
+User |o--|| Role
+@enduml
+@startuml Address
+skinparam linetype ortho
+entity "Address" as Address {
++ id [PK] : String 
+--
+  street : String
+  * zipCode : String
+  # cityId : [FK] City
+  latitude : Decimal
+  longitude : Decimal
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "City" as City {
++ id [PK] : String 
+--
+  * name : String
+  # stateId : [FK] State
+  # countryId : [FK] Country
+}
+
+entity "Advertisement" as Advertisement {
++ id [PK] : String 
+--
+  * type : AdvertisementType
+  * price : Decimal
+  * maxWeight : Decimal
+  # destinationId : [FK] Address
+  # departureId : [FK] Address
+  # authorId : [FK] User
+  departureDate : DateTime
+  * arrivalDate : DateTime
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+' Relations
+Address }o--|| City: cityId
+Advertisement }o--|| Address: destinationId
+Advertisement }o--|| Address: departureId
+' ManyToMany Relations
+' enum relations
+@enduml
+@startuml Country
+skinparam linetype ortho
+entity "Country" as Country {
++ id [PK] : String 
+--
+  * name : String
+  * isoCode : String
+}
+
+entity "State" as State {
++ id [PK] : String 
+--
+  * name : String
+  # countryId : [FK] Country
+}
+
+entity "City" as City {
++ id [PK] : String 
+--
+  * name : String
+  # stateId : [FK] State
+  # countryId : [FK] Country
+}
+
+' Relations
+State }o--|| Country: countryId
+City }o--o| State: stateId
+City }o--|| Country: countryId
+' ManyToMany Relations
+' enum relations
+@enduml
+@startuml State
+skinparam linetype ortho
+entity "Country" as Country {
++ id [PK] : String 
+--
+  * name : String
+  * isoCode : String
+}
+
+entity "State" as State {
++ id [PK] : String 
+--
+  * name : String
+  # countryId : [FK] Country
+}
+
+entity "City" as City {
++ id [PK] : String 
+--
+  * name : String
+  # stateId : [FK] State
+  # countryId : [FK] Country
+}
+
+' Relations
+State }o--|| Country: countryId
+City }o--o| State: stateId
+City }o--|| Country: countryId
+' ManyToMany Relations
+' enum relations
+@enduml
+@startuml City
+skinparam linetype ortho
+entity "Address" as Address {
++ id [PK] : String 
+--
+  street : String
+  * zipCode : String
+  # cityId : [FK] City
+  latitude : Decimal
+  longitude : Decimal
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Country" as Country {
++ id [PK] : String 
+--
+  * name : String
+  * isoCode : String
+}
+
+entity "State" as State {
++ id [PK] : String 
+--
+  * name : String
+  # countryId : [FK] Country
+}
+
+entity "City" as City {
++ id [PK] : String 
+--
+  * name : String
+  # stateId : [FK] State
+  # countryId : [FK] Country
+}
+
+' Relations
+Address }o--|| City: cityId
+State }o--|| Country: countryId
+City }o--o| State: stateId
+City }o--|| Country: countryId
+' ManyToMany Relations
+' enum relations
+@enduml
+@startuml Media
+skinparam linetype ortho
+entity "Media" as Media {
++ id [PK] : String 
+--
+  * url : String
+  * type : String
+  metadata : Json
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "PackageMedia" as PackageMedia {
++ id [PK] : String 
+--
+  # packageId : [FK] Package
+  # mediaId : [FK] Media
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Message" as Message {
++ id [PK] : String 
+--
+  * content : String
+  # conversationId : [FK] Conversation
+  # mediaId : [FK] Media
+  # authorId : [FK] User
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+' Relations
+PackageMedia }o--|| Media: mediaId
+Message }o--o| Media: mediaId
+' ManyToMany Relations
+' enum relations
+@enduml
+@startuml Package
+skinparam linetype ortho
+entity "User" as User {
++ id [PK] : String 
+--
+  * email : [UK] String
+  * firstName : String
+  * lastName : String
+  * password : String
+  * role : Role
+  * createdAt : DateTime
+  * updatedAt : DateTime
+  avatar : String
+}
+
+entity "Package" as Package {
++ id [PK] : String 
+--
+  * name : String
+  description : String
+  * weight : Decimal
+  # ownerId : [FK] User
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "PackageMedia" as PackageMedia {
++ id [PK] : String 
+--
+  # packageId : [FK] Package
+  # mediaId : [FK] Media
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Mission" as Mission {
++ id [PK] : String 
+--
+  # advertisementId : [FK] Advertisement
+  # packageId : [UK] [FK] Package
+  # initiatorId : [FK] User
+  # acceptorId : [FK] User
+  * negotiatedPrice : Decimal
+  * status : MissionStatus
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+' Relations
+Package }o--|| User: ownerId
+PackageMedia }o--|| Package: packageId
+Mission }o--|| User: initiatorId
+Mission }o--o| User: acceptorId
+Mission |o--|| Package: packageId
+' ManyToMany Relations
+' enum relations
+@enduml
+@startuml PackageMedia
+skinparam linetype ortho
+entity "Media" as Media {
++ id [PK] : String 
+--
+  * url : String
+  * type : String
+  metadata : Json
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Package" as Package {
++ id [PK] : String 
+--
+  * name : String
+  description : String
+  * weight : Decimal
+  # ownerId : [FK] User
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "PackageMedia" as PackageMedia {
++ id [PK] : String 
+--
+  # packageId : [FK] Package
+  # mediaId : [FK] Media
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+' Relations
+PackageMedia }o--|| Package: packageId
+PackageMedia }o--|| Media: mediaId
+' ManyToMany Relations
+' enum relations
+@enduml
+@startuml Mission
+skinparam linetype ortho
+enum "MissionStatus" as MissionStatus {
+  PENDING: pending
+  ACCEPTED: accepted
+  PICKED_UP: picked_up
+  IN_TRANSIT: in_transit
+  COMPLETED: completed
+}
+entity "User" as User {
++ id [PK] : String 
+--
+  * email : [UK] String
+  * firstName : String
+  * lastName : String
+  * password : String
+  * role : Role
+  * createdAt : DateTime
+  * updatedAt : DateTime
+  avatar : String
+}
+
+entity "Package" as Package {
++ id [PK] : String 
+--
+  * name : String
+  description : String
+  * weight : Decimal
+  # ownerId : [FK] User
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Mission" as Mission {
++ id [PK] : String 
+--
+  # advertisementId : [FK] Advertisement
+  # packageId : [UK] [FK] Package
+  # initiatorId : [FK] User
+  # acceptorId : [FK] User
+  * negotiatedPrice : Decimal
+  * status : MissionStatus
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Advertisement" as Advertisement {
++ id [PK] : String 
+--
+  * type : AdvertisementType
+  * price : Decimal
+  * maxWeight : Decimal
+  # destinationId : [FK] Address
+  # departureId : [FK] Address
+  # authorId : [FK] User
+  departureDate : DateTime
+  * arrivalDate : DateTime
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Transaction" as Transaction {
++ id [PK] : String 
+--
+  * amount : Decimal
+  * method : TransactionMethod
+  * status : TransactionStatus
+  # missionId : [UK] [FK] Mission
+  transactionReference : [UK] String
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+' Relations
+Package }o--|| User: ownerId
+Mission }o--|| User: initiatorId
+Mission }o--o| User: acceptorId
+Mission }o--|| Advertisement: advertisementId
+Mission |o--|| Package: packageId
+Advertisement }o--|| User: authorId
+Transaction |o--|| Mission: missionId
+' ManyToMany Relations
+' enum relations
+Mission |o--|| MissionStatus
+@enduml
+@startuml Advertisement
+skinparam linetype ortho
+enum "AdvertisementType" as AdvertisementType {
+  DeliveryRequest: delivery_request
+  DeliveryOffer: delivery_offer
+}
+entity "User" as User {
++ id [PK] : String 
+--
+  * email : [UK] String
+  * firstName : String
+  * lastName : String
+  * password : String
+  * role : Role
+  * createdAt : DateTime
+  * updatedAt : DateTime
+  avatar : String
+}
+
+entity "Address" as Address {
++ id [PK] : String 
+--
+  street : String
+  * zipCode : String
+  # cityId : [FK] City
+  latitude : Decimal
+  longitude : Decimal
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Mission" as Mission {
++ id [PK] : String 
+--
+  # advertisementId : [FK] Advertisement
+  # packageId : [UK] [FK] Package
+  # initiatorId : [FK] User
+  # acceptorId : [FK] User
+  * negotiatedPrice : Decimal
+  * status : MissionStatus
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Advertisement" as Advertisement {
++ id [PK] : String 
+--
+  * type : AdvertisementType
+  * price : Decimal
+  * maxWeight : Decimal
+  # destinationId : [FK] Address
+  # departureId : [FK] Address
+  # authorId : [FK] User
+  departureDate : DateTime
+  * arrivalDate : DateTime
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Conversation" as Conversation {
++ id [PK] : String 
+--
+  # advertisementId : [FK] Advertisement
+  # shipperId : [FK] User
+  # carrierId : [FK] User
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+' Relations
+Mission }o--|| User: initiatorId
+Mission }o--o| User: acceptorId
+Mission }o--|| Advertisement: advertisementId
+Advertisement }o--|| User: authorId
+Advertisement }o--|| Address: destinationId
+Advertisement }o--|| Address: departureId
+Conversation }o--|| Advertisement: advertisementId
+Conversation }o--|| User: shipperId
+Conversation }o--|| User: carrierId
+' ManyToMany Relations
+' enum relations
+Advertisement |o--|| AdvertisementType
+@enduml
+@startuml Transaction
+skinparam linetype ortho
+enum "TransactionMethod" as TransactionMethod {
+  CASH: cash
+  CREDIT_CARD: credit_card
+  PAYPAL: paypal
+}
+enum "TransactionStatus" as TransactionStatus {
+  PENDING: pending
+  COMPLETED: completed
+  CANCELLED: cancelled
+}
+entity "Mission" as Mission {
++ id [PK] : String 
+--
+  # advertisementId : [FK] Advertisement
+  # packageId : [UK] [FK] Package
+  # initiatorId : [FK] User
+  # acceptorId : [FK] User
+  * negotiatedPrice : Decimal
+  * status : MissionStatus
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Transaction" as Transaction {
++ id [PK] : String 
+--
+  * amount : Decimal
+  * method : TransactionMethod
+  * status : TransactionStatus
+  # missionId : [UK] [FK] Mission
+  transactionReference : [UK] String
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+' Relations
+Transaction |o--|| Mission: missionId
+' ManyToMany Relations
+' enum relations
+Transaction |o--|| TransactionMethod
+Transaction |o--|| TransactionStatus
+@enduml
+@startuml Conversation
+skinparam linetype ortho
+entity "User" as User {
++ id [PK] : String 
+--
+  * email : [UK] String
+  * firstName : String
+  * lastName : String
+  * password : String
+  * role : Role
+  * createdAt : DateTime
+  * updatedAt : DateTime
+  avatar : String
+}
+
+entity "Advertisement" as Advertisement {
++ id [PK] : String 
+--
+  * type : AdvertisementType
+  * price : Decimal
+  * maxWeight : Decimal
+  # destinationId : [FK] Address
+  # departureId : [FK] Address
+  # authorId : [FK] User
+  departureDate : DateTime
+  * arrivalDate : DateTime
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Conversation" as Conversation {
++ id [PK] : String 
+--
+  # advertisementId : [FK] Advertisement
+  # shipperId : [FK] User
+  # carrierId : [FK] User
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Message" as Message {
++ id [PK] : String 
+--
+  * content : String
+  # conversationId : [FK] Conversation
+  # mediaId : [FK] Media
+  # authorId : [FK] User
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+' Relations
+Advertisement }o--|| User: authorId
+Conversation }o--|| Advertisement: advertisementId
+Conversation }o--|| User: shipperId
+Conversation }o--|| User: carrierId
+Message }o--|| Conversation: conversationId
+Message }o--|| User: authorId
+' ManyToMany Relations
+' enum relations
+@enduml
+@startuml Message
+skinparam linetype ortho
+entity "User" as User {
++ id [PK] : String 
+--
+  * email : [UK] String
+  * firstName : String
+  * lastName : String
+  * password : String
+  * role : Role
+  * createdAt : DateTime
+  * updatedAt : DateTime
+  avatar : String
+}
+
+entity "Media" as Media {
++ id [PK] : String 
+--
+  * url : String
+  * type : String
+  metadata : Json
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Conversation" as Conversation {
++ id [PK] : String 
+--
+  # advertisementId : [FK] Advertisement
+  # shipperId : [FK] User
+  # carrierId : [FK] User
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+entity "Message" as Message {
++ id [PK] : String 
+--
+  * content : String
+  # conversationId : [FK] Conversation
+  # mediaId : [FK] Media
+  # authorId : [FK] User
+  * createdAt : DateTime
+  * updatedAt : DateTime
+}
+
+' Relations
+Conversation }o--|| User: shipperId
+Conversation }o--|| User: carrierId
+Message }o--|| Conversation: conversationId
+Message }o--|| User: authorId
+Message }o--o| Media: mediaId
+' ManyToMany Relations
+' enum relations
+@enduml

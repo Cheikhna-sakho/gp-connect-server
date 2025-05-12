@@ -20,8 +20,8 @@ export class AddressesService {
     this.city = this.databaseService.city;
     this.state = this.databaseService.state;
   }
-  async findAll() {
-    return this.address.findMany({ include: { city: true } });
+  async findAll(where?: Prisma.AddressWhereInput) {
+    return this.address.findMany({ where, include: { city: true } });
   }
   async findBy(where: Prisma.AddressWhereUniqueInput) {
     return this.address.findUnique({

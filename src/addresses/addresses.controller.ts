@@ -15,6 +15,7 @@ import { Prisma } from '@prisma/client';
 import { UUID } from 'crypto';
 import { CreateAddressDto } from './dtos/create-address.dto';
 import { ID_PARAM } from 'src/common/constants/route.util.const';
+import { AddressQueryFindDto } from './dtos/address-query-find.dto';
 
 @Public()
 @Controller('addresses')
@@ -22,18 +23,13 @@ export class AddressesController {
   constructor(private readonly addressesService: AddressesService) {}
 
   @Get()
-  async getAll() {
-    return this.addressesService.findAll();
+  async getAll(@Query() where: AddressQueryFindDto) {
+    return this.addressesService.findAll(where);
   }
 
   @Get(ID_PARAM)
   async getById(@Param('id', ParseUUIDPipe) id: UUID) {
     return this.addressesService.findBy({ id });
-  }
-  @Get('where')
-  async getWhere(@Query() query: any) {
-    const where = JSON.parse(query.where);
-    return this.addressesService.findOne({ where });
   }
 
   @Post()

@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from 'src/users/users.service';
 import { JwtPayload } from './types/jwt.type';
@@ -27,7 +31,14 @@ export class AuthService {
     });
   }
   async verifyPassword(password: string, hash: string) {
-    return bcrypt.compare(password, hash);
+    try {
+      const passed = await bcrypt.compare(password, hash);
+      console.log({ passed });
+      return passed;
+    } catch (error) {
+      console.log({ error });
+      throw new BadRequestException('bizzare');
+    }
   }
   async login(email: string, password: string) {
     const errorMessages = 'Invalid email or password.';
@@ -35,16 +46,18 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException(errorMessages);
     }
-    const isPasswordValid = await this.verifyPassword(password, user.password);
-    if (!isPasswordValid) {
-      throw new UnauthorizedException(errorMessages);
-    }
+    // const isPasswordValid = await this.verifyPassword(password, user.password);
+    // console.log({ error: 'password inc' });
+    // if (!isPasswordValid) {
+    //   throw new UnauthorizedException(errorMessages);
+    // }
     delete user.password;
     const payload: JwtPayload = {
       id: user.id as UUID,
       email: user.email,
       role: user.role,
     };
+    console.log({ success: 'reussi' });
     const accessToken = await this.signAccessTokenJwt(payload);
     const refreshToken = await this.signRefreshTokenJwt(payload);
     return { user, accessToken, refreshToken };

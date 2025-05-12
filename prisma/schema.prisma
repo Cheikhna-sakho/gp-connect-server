@@ -1,10 +1,11 @@
 generator client {
   provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
-  provider          = "postgresql"
-  url               = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 enum Role {
@@ -25,12 +26,17 @@ enum TransactionStatus {
   CANCELLED @map("cancelled")
 }
 
-enum MissionStatus {
+enum PackageStatus {
   PENDING    @map("pending")
-  ACCEPTED   @map("accepted")
   PICKED_UP  @map("picked_up")
   IN_TRANSIT @map("in_transit")
-  COMPLETED  @map("completed")
+  DELIVERED  @map("delivered")
+}
+
+enum MissionStatus {
+  PENDING   @map("pending")
+  ACCEPTED  @map("accepted")
+  COMPLETED @map("completed")
 }
 
 enum AdvertisementType {
@@ -53,7 +59,6 @@ model User {
   role      Role     @default(USER)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
-  avatar    String?
 
   advertisements         Advertisement[]
   packages               Package[]
@@ -62,8 +67,19 @@ model User {
   messages               Message[]       @relation("sender")
   ConversationsAsShipper Conversation[]  @relation("shipper")
   ConversationsAsCarrier Conversation[]  @relation("carrier")
+  avatar                 UserAvatar?
 
   @@map("users")
+}
+
+model UserAvatar {
+  userId  String @unique @map("user_id")
+  imageId String @map("image_id")
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  image Media @relation(fields: [imageId], references: [id])
+
+  @@id([userId, imageId])
 }
 
 model Address {
@@ -128,30 +144,32 @@ model Media {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  packages PackageMedia[]
-  messages Message[]
+  packages   PackageMedia[]
+  messages   MessageMedia[]
+  userAvatar UserAvatar[]
 
   @@map("medias")
 }
 
 model Package {
-  id          String   @id @default(uuid())
+  id          String        @id @default(uuid())
   name        String
   description String?
-  weight      Decimal  @default(0) @db.Decimal(7, 3)
-  ownerId     String   @map("owner_id")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  status      PackageStatus @default(PENDING)
+  weight      Decimal       @default(0) @db.Decimal(7, 3)
+  ownerId     String        @map("owner_id")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
 
-  owner   User           @relation(fields: [ownerId], references: [id])
-  mission Mission?
-  medias  PackageMedia[]
+  owner    User             @relation(fields: [ownerId], references: [id])
+  images   PackageMedia[]
+  mission  MissionPackage?
+  messages MessagePackage[]
 
   @@map("packages")
 }
 
 model PackageMedia {
-  id        String   @id @default(uuid())
   packageId String   @map("package_id")
   mediaId   String   @map("media_id")
   createdAt DateTime @default(now()) @map("created_at")
@@ -160,14 +178,13 @@ model PackageMedia {
   package Package @relation(fields: [packageId], references: [id])
   media   Media   @relation(fields: [mediaId], references: [id])
 
-  @@unique([packageId, mediaId])
+  @@id([packageId, mediaId])
   @@map("package_medias")
 }
 
 model Mission {
   id              String        @id @default(uuid())
   advertisementId String        @map("advertisement_id")
-  packageId       String        @unique @map("package_id")
   initiatorId     String        @map("initiator_id")
   acceptorId      String?       @map("acceptor_id")
   negotiatedPrice Decimal       @default(0) @map("negotiated_price")
@@ -175,14 +192,24 @@ model Mission {
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
-  initiator     User          @relation("Initiator", fields: [initiatorId], references: [id])
-  acceptor      User?         @relation("Acceptor", fields: [acceptorId], references: [id])
-  advertisement Advertisement @relation(fields: [advertisementId], references: [id], onDelete: Cascade)
-  package       Package       @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  initiator     User             @relation("Initiator", fields: [initiatorId], references: [id])
+  acceptor      User?            @relation("Acceptor", fields: [acceptorId], references: [id])
+  advertisement Advertisement    @relation(fields: [advertisementId], references: [id], onDelete: Cascade)
   transaction   Transaction?
+  packages      MissionPackage[]
 
-  @@unique([advertisementId, packageId])
   @@map("missions")
+}
+
+model MissionPackage {
+  missionId String @map("missionId")
+  packageId String @unique @map("package_id")
+
+  package Package @relation(fields: [packageId], references: [id])
+  mission Mission @relation(fields: [missionId], references: [id])
+
+  @@id([missionId, packageId])
+  @@map("mission_packages")
 }
 
 model Advertisement {
@@ -239,18 +266,47 @@ model Conversation {
   @@map("conversations")
 }
 
-model Message {
-  id             String   @id @default(uuid())
-  content        String
-  conversationId String   @map("conversation_id")
-  mediaId        String?
-  authorId       String   @map("author_id")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+enum MessageType {
+  MEDIA   @map("media")
+  PACKAGE @map("package")
+  TEXT    @map("text")
+}
 
-  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  author       User         @relation("sender", fields: [authorId], references: [id])
-  media        Media?       @relation(fields: [mediaId], references: [id])
+model Message {
+  id             String      @id @default(uuid())
+  content        String
+  conversationId String      @map("conversation_id")
+  type           MessageType @default(TEXT)
+  authorId       String      @map("author_id")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  conversation Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  author       User             @relation("sender", fields: [authorId], references: [id])
+  packages     MessagePackage[]
+  medias       MessageMedia[]
 
   @@map("messages")
+}
+
+model MessagePackage {
+  messageId String
+  packageId String
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  package Package @relation(fields: [packageId], references: [id])
+
+  @@id([messageId, packageId])
+  @@map("message_packages")
+}
+
+model MessageMedia {
+  messageId String
+  mediaId   String
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  media   Media   @relation(fields: [mediaId], references: [id])
+
+  @@id([messageId, mediaId])
+  @@map("message_medias")
 }

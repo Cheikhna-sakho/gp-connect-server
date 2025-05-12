@@ -1,14 +1,15 @@
 import { prismaClient } from './configs/prisma-client';
-// import { seedAddresses } from './seeders/addresses.seeder';
+import { seedAddresses } from './seeders/addresses.seeder';
 import { seedAdvertisements } from './seeders/advertisement.seeder';
-// import { seedPackages } from './seeders/packages.seeder';
-// import { seedUsers } from './seeders/users.seeder';
+import { seedPackages } from './seeders/packages.seeder';
+import { seedUsers } from './seeders/users.seeder';
 
 const main = async () => {
   try {
-    // await seedAddresses();
+    await seedAddresses();
+    await seedUsers();
     await seedAdvertisements();
-    // await seedPackages();
+    await seedPackages();
   } catch (error) {
     console.error(error);
   }

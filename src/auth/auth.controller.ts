@@ -26,7 +26,6 @@ export class AuthController {
     return this.authService.register(data);
   }
 
-  @Serialize(UserEntity)
   @UseGuards(RefreshTokenGuard)
   @Post('refresh')
   @Serialize(RefreshEntity)

@@ -12,7 +12,10 @@ export class ConversationsService {
   }
 
   findBy(where: Prisma.ConversationWhereUniqueInput) {
-    return this.conversations.findUnique({ where });
+    return this.conversations.findUnique({
+      where,
+      include: { messages: true, shipper: true, carrier: true },
+    });
   }
 
   findAll(where: Prisma.ConversationWhereInput) {
@@ -39,6 +42,24 @@ export class ConversationsService {
     include?: Prisma.ConversationInclude,
   ) {
     return this.conversations.create({ data, include });
+  }
+  async createIfNotExist({
+    advertisementId,
+    shipperId,
+    carrierId,
+  }: {
+    advertisementId: string;
+    shipperId: string;
+    carrierId: string;
+  }) {
+    const existing = await this.conversations.findFirst({
+      where: { advertisementId, shipperId, carrierId },
+      select: { id: true },
+    });
+    if (existing) return existing;
+    return this.conversations.create({
+      data: { advertisementId, shipperId, carrierId },
+    });
   }
   update({
     where,

@@ -14,6 +14,9 @@ type UpdateBy = Prisma.PackageUpdateInput;
 
 type Delete = { where: Prisma.PackageWhereUniqueInput };
 
+const DEFAULT_INCLUDE = {
+  images: { include: { media: true } },
+} as const;
 @Injectable()
 export class PackagesService {
   private packages: DatabaseService['package'];
@@ -26,35 +29,36 @@ export class PackagesService {
     this.packageMedias = this.databaseService.packageMedia;
   }
   async findBy(where: FindUnique) {
-    return this.packages.findFirst({ where });
+    return this.packages.findFirst({ where, include: DEFAULT_INCLUDE });
   }
   async find({ where }: Find) {
-    return this.packages.findMany({ where });
+    return this.packages.findMany({ where, include: DEFAULT_INCLUDE });
   }
   async findOne({ where }: FindOne) {
-    return this.packages.findFirst({ where });
+    return this.packages.findFirst({ where, include: DEFAULT_INCLUDE });
   }
   async findAll() {
-    return this.packages.findMany();
+    return this.packages.findMany({ include: DEFAULT_INCLUDE });
   }
   async findAllByUser(ownerId: string) {
-    return this.packages.findMany({ where: { ownerId } });
-  }
-  async create(data: CreatePackageDto) {
-    const { images, ownerId, ...rest } = data;
-    let medias = {} as Prisma.PackageMediaCreateNestedManyWithoutPackageInput;
-    if (images) {
-      const imagesData = await this.mediasService.createManyImages(images);
-      medias = {
-        createMany: { data: imagesData.map(({ id }) => ({ mediaId: id })) },
-      };
-    }
-    return this.packages.create({
-      data: { ...rest, ownerId, medias },
+    return this.packages.findMany({
+      where: { ownerId },
+      include: DEFAULT_INCLUDE,
     });
   }
-  createImage(data: Express.Multer.File) {
-    return this.mediasService.createImage(data);
+  async create(data: CreatePackageDto) {
+    const { ownerId, ...rest } = data;
+
+    return this.packages.create({
+      data: { ...rest, ownerId },
+    });
+  }
+  async createImage(packageId: string, data: Express.Multer.File[]) {
+    const images = await this.mediasService.createManyVideos(data);
+    // await this.packageMedias.createMany({
+    //   data: images.map(({ id: mediaId }) => ({ packageId, mediaId })),
+    // });
+    return images;
   }
   async updateWhere({ data, where }: Update) {
     return this.packages.update({ where, data });

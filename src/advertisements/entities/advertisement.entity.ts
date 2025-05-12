@@ -51,6 +51,11 @@ export class AdvertisementEntity implements Advertisement {
   @Expose()
   destination: Address;
 
+  @Expose()
+  get reference() {
+    return `ADV-${this.id.split('-')[0].toUpperCase()}`;
+  }
+
   constructor(partial: Partial<AdvertisementEntity>) {
     Object.assign(this, partial);
   }

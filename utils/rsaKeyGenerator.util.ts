@@ -5,7 +5,7 @@ import * as path from 'path';
 const __rootDir = path.resolve(__dirname, '..');
 
 function rsaKeyGenerator() {
-  const keyPair = crypto.generateKeyPairSync('rsa', {
+  return crypto.generateKeyPairSync('rsa', {
     modulusLength: 4096,
     publicKeyEncoding: {
       type: 'pkcs1',
@@ -16,8 +16,6 @@ function rsaKeyGenerator() {
       format: 'pem',
     },
   });
-  const { publicKey, privateKey } = keyPair;
-  return { publicKey, privateKey };
 }
 function writeTokenAccessKeyInEnvFile(
   publicKeyPropertyName: string,

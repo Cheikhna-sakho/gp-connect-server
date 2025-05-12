@@ -1,6 +1,7 @@
 import { prismaClient } from '../configs/prisma-client';
 import { CreateAdvertisementDto } from 'src/advertisements/dtos/create-advertisements.dto';
 import { addressesFixtures, usersFixtures } from '../fixtures';
+import { Decimal } from '@prisma/client/runtime/library';
 const {
   user: userClient,
   address: addressClient,
@@ -17,6 +18,7 @@ const randomAd = async () => {
     where: { email: usersFixtures[1].email },
     // select: { id: true },
   });
+  console.log({ authorId });
   const [departure, destination] = addressesFixtures;
   const { id: departureId } = await getAddress(departure.zipCode);
   const { id: destinationId } = await getAddress(destination.zipCode);
@@ -24,10 +26,10 @@ const randomAd = async () => {
   return {
     authorId,
     arrivalDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
-    price: 10,
+    price: new Decimal(10),
     departureId,
     destinationId,
-    maxWeight: 10,
+    maxWeight: new Decimal(10),
   } satisfies CreateAdvertisementDto;
 };
 export const seedAdvertisements = async () => {

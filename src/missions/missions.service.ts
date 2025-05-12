@@ -20,7 +20,7 @@ const getMissionFields = <
 const MISSION_WITH_ALL_FIELDS = getMissionFields([
   'advertisement',
   'transaction',
-  'package',
+  'packages',
   'initiator',
 ]);
 @Injectable()
@@ -49,7 +49,12 @@ export class MissionsService {
     return this.missions.create({
       data: {
         advertisement: { connect: { id: advertisementId } },
-        package: { connect: { id: packageId } },
+        packages: {
+          connectOrCreate: {
+            where: { packageId },
+            create: { packageId },
+          },
+        },
         initiator: { connect: { id: initiatorId } },
       },
     });
