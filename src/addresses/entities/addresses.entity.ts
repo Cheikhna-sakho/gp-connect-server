@@ -20,7 +20,7 @@ export class AddressEntity implements Address {
   }
   set city(c) {
     if (typeof c === 'object') {
-      this.country = c.country.name;
+      this.country = c.country;
       this._city = c.name;
     } else {
       this._city = c;

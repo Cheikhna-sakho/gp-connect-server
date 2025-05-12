@@ -1,18 +1,12 @@
-import { OmitType } from '@nestjs/mapped-types';
+import { IntersectionType, OmitType } from '@nestjs/mapped-types';
 import { CreateAddressDto } from './create-address.dto';
-import { CreateCountryDto } from './create-country.dto';
-import { IsObject, IsString, ValidateNested } from 'class-validator';
+import { IsString } from 'class-validator';
+import { CreateCityDto } from './create-city-dto';
 
-export class CreateFullAddressDto extends OmitType(CreateAddressDto, [
-  'cityId',
-]) {
+export class CreateFullAddressDto extends IntersectionType(
+  OmitType(CreateAddressDto, ['cityId']),
+  OmitType(CreateCityDto, ['name']),
+) {
   @IsString()
   city: string;
-
-  @IsObject()
-  @ValidateNested()
-  country: CreateCountryDto;
-
-  @IsString()
-  state: string;
 }

@@ -1,3 +1,3 @@
 export const FULL_ADDRESS_INCLUDES_FIELDS = {
-  include: { city: { include: { country: true } } },
+  include: { city: true },
 };
