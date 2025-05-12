@@ -1,8 +1,7 @@
 [
   {
     "city": "paris",
-    "state": "ile-de-france",
-    "isoCode": "fra",
+    "countryIsoCode": "fra",
     "country": "france",
     "zipCode": "75000",
     "latitude": 48.866667,
@@ -10,8 +9,7 @@
   },
   {
     "city": "dakar",
-    "state": "dakar",
-    "isoCode": "sen",
+    "countryIsoCode": "sen",
     "country": "senegal",
     "zipCode": "12500",
     "latitude": 14.707295,

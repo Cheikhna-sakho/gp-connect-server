@@ -80,6 +80,7 @@ model UserAvatar {
   image Media @relation(fields: [imageId], references: [id])
 
   @@id([userId, imageId])
+  @@map("user_avatar")
 }
 
 model Address {
@@ -101,36 +102,12 @@ model Address {
   @@map("addresses")
 }
 
-model Country {
-  id      String @id @default(uuid())
-  name    String
-  isoCode String @map("iso_code")
-
-  states State[]
-  cities City[]
-
-  @@map("countries")
-}
-
-model State {
-  id        String @id @default(uuid())
-  name      String
-  countryId String @map("country_id")
-
-  country Country @relation(fields: [countryId], references: [id])
-  cities  City[]
-
-  @@map("states")
-}
-
 model City {
-  id        String  @id @default(uuid())
-  name      String
-  stateId   String? @map("state_id")
-  countryId String  @map("country_id")
+  id             String @id @default(uuid())
+  name           String
+  countryIsoCode String @map("country_iso_code")
+  country        String @map("country_id")
 
-  state     State?    @relation(fields: [stateId], references: [id])
-  country   Country   @relation(fields: [countryId], references: [id])
   addresses Address[]
 
   @@map("cities")
@@ -161,10 +138,9 @@ model Package {
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
 
-  owner    User             @relation(fields: [ownerId], references: [id])
-  images   PackageMedia[]
-  mission  MissionPackage?
-  messages MessagePackage[]
+  owner   User            @relation(fields: [ownerId], references: [id])
+  images  PackageMedia[]
+  mission MissionPackage?
 
   @@map("packages")
 }
@@ -197,6 +173,7 @@ model Mission {
   advertisement Advertisement    @relation(fields: [advertisementId], references: [id], onDelete: Cascade)
   transaction   Transaction?
   packages      MissionPackage[]
+  Offer         Offer[]
 
   @@map("missions")
 }
@@ -217,6 +194,7 @@ model Advertisement {
   type          AdvertisementType @default(DeliveryOffer)
   price         Decimal           @default(0)
   maxWeight     Decimal           @default(0) @map("max_weight") @db.Decimal(7, 3)
+  weight        Decimal           @default(0) @map("weight") @db.Decimal(7, 3)
   destinationId String            @map("destination_id")
   departureId   String            @map("departure_id")
   authorId      String            @map("author_id")
@@ -267,9 +245,9 @@ model Conversation {
 }
 
 enum MessageType {
-  MEDIA   @map("media")
-  PACKAGE @map("package")
-  TEXT    @map("text")
+  MEDIA @map("media")
+  OFFER @map("offer")
+  TEXT  @map("text")
 }
 
 model Message {
@@ -281,23 +259,12 @@ model Message {
   createdAt      DateTime    @default(now()) @map("created_at")
   updatedAt      DateTime    @updatedAt @map("updated_at")
 
-  conversation Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  author       User             @relation("sender", fields: [authorId], references: [id])
-  packages     MessagePackage[]
+  conversation Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  author       User           @relation("sender", fields: [authorId], references: [id])
   medias       MessageMedia[]
+  Offer        Offer[]
 
   @@map("messages")
-}
-
-model MessagePackage {
-  messageId String
-  packageId String
-
-  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  package Package @relation(fields: [packageId], references: [id])
-
-  @@id([messageId, packageId])
-  @@map("message_packages")
 }
 
 model MessageMedia {
@@ -309,4 +276,17 @@ model MessageMedia {
 
   @@id([messageId, mediaId])
   @@map("message_medias")
+}
+
+model Offer {
+  id        String  @id @default(uuid())
+  price     Decimal
+  weight    Decimal @default(0)
+  messageId String
+  missionId String?
+  accepted  Boolean @default(false)
+  confirmed Boolean @default(false)
+
+  mission Mission? @relation(fields: [missionId], references: [id])
+  message Message  @relation(fields: [messageId], references: [id])
 }
