@@ -11,7 +11,7 @@ export class CreateAddressDto implements Prisma.AddressUncheckedCreateInput {
   cityId: string;
 
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   zipCode: string;
 
   @IsLatitude()

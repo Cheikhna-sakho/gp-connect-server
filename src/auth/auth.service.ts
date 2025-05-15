@@ -33,7 +33,7 @@ export class AuthService {
   async verifyPassword(password: string, hash: string) {
     try {
       const passed = await bcrypt.compare(password, hash);
-      console.log({ passed });
+
       return passed;
     } catch (error) {
       console.log({ error });

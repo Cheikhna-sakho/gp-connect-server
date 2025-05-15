@@ -23,30 +23,7 @@ import { CreateAdvertisementWithAddressDto } from './dtos/create-advertisements-
 import { AdvertisementEntity } from './entities/advertisement.entity';
 import { Serialize } from 'src/common/decorators/serialize.decorator';
 import { AdvertisementQueryFindDto } from './dtos/advertisements-query-find.dto';
-import * as crypto from 'crypto';
-// import { v4 as uuidv4 } from 'uuid';
 
-async function generateUniqueSerial(prefix: string): Promise<string> {
-  let serialNumber;
-  let exists;
-
-  do {
-    const uuid = crypto.randomUUID(); // Exemple : 550e8400-e29b-41d4-a716-446655440000
-    serialNumber = `${prefix}-${uuid.split('-')[0].toUpperCase()}`; // Ex: PKG-550E8400
-  } while (exists);
-  console.log({ serialNumber });
-  return serialNumber;
-}
-function generateHashId(prefix: string): string {
-  const timestamp = Date.now().toString(36); // Base36 pour compresser le timestamp
-  const random = crypto.randomBytes(2).toString('hex'); // Générer un hash court
-  console.log({ timestamp, random });
-  return `${prefix}-${timestamp}${random}`.toUpperCase();
-}
-console.log({
-  hashUid: generateUniqueSerial('ADV'),
-  hashTm: generateHashId('ADV'),
-});
 @Controller('advertisements')
 export class AdvertisementsController {
   constructor(
@@ -86,10 +63,11 @@ export class AdvertisementsController {
   ) {
     data.authorId = authorId;
     data.type = 'DeliveryRequest';
+
     return this.advertisementsService.create(data);
   }
   @Post()
-  @UseGuards(RolesGuard)
+  // @UseGuards(RolesGuard)
   // @Roles('ADMIN', 'GP')
   async create(
     @GetUserId() authorId: string,
@@ -105,6 +83,7 @@ export class AdvertisementsController {
       { ...departure },
       { id: true },
     );
+    // console.log({ departure, destination });
     return this.advertisementsService.create({
       ...dto,
       destinationId,

@@ -34,6 +34,7 @@ export class AddressesService {
     const city = await this.city.findFirst({
       where: dto,
     });
+
     if (city) return city;
     return this.city.create({ data: dto });
   }
@@ -48,8 +49,14 @@ export class AddressesService {
       countryIsoCode,
       name: city,
     });
+    const { latitude, longitude, ...rest } = addressDto;
     let existingAddress = await this.address.findFirst({
-      where: { OR: [{ cityId, ...addressDto }] },
+      where: {
+        OR: [
+          { cityId, ...rest },
+          { latitude, longitude },
+        ],
+      },
       select: returning,
     });
     if (!existingAddress) {
@@ -86,6 +93,7 @@ export class AddressesService {
     return { cityId };
   }
   async create(data: CreateAddressDto) {
+    console.log({ data });
     return this.address.create({ data });
   }
   async update({

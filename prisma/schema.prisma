@@ -86,7 +86,7 @@ model UserAvatar {
 model Address {
   id        String   @id @default(uuid())
   street    String?
-  zipCode   String   @map("zip_code")
+  zipCode   String?   @map("zip_code")
   cityId    String   @map("city_id")
   latitude  Decimal? @db.Decimal(8, 6)
   longitude Decimal? @db.Decimal(9, 6)
@@ -98,7 +98,6 @@ model Address {
   departures   Advertisement[] @relation("departure")
 
   @@unique([latitude, longitude])
-  @@unique([cityId, zipCode])
   @@map("addresses")
 }
 

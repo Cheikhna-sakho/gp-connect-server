@@ -1,6 +1,6 @@
 import { $Enums, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsDate,
   IsEmpty,
@@ -8,6 +8,7 @@ import {
   IsNumber,
   IsOptional,
   IsUUID,
+  Min,
 } from 'class-validator';
 
 export class AdvertisementDto
@@ -18,6 +19,8 @@ export class AdvertisementDto
   type?: $Enums.AdvertisementType;
 
   @IsNumber()
+  @Type(() => Number)
+  @Min(0)
   price: Decimal;
 
   @IsNumber()

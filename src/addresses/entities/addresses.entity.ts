@@ -1,10 +1,9 @@
 import { Address } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
-import { Exclude, Expose, Type } from 'class-transformer';
+import { Expose, Type } from 'class-transformer';
 import { CityEntity } from './city.entity';
 
 export class AddressEntity implements Address {
-  @Exclude() _city: CityEntity | string;
   @Expose() id: string;
 
   @Expose() street: string;
@@ -15,17 +14,7 @@ export class AddressEntity implements Address {
 
   @Type(() => CityEntity)
   @Expose()
-  get city() {
-    return this._city;
-  }
-  set city(c) {
-    if (typeof c === 'object') {
-      this.country = c.country;
-      this._city = c.name;
-    } else {
-      this._city = c;
-    }
-  }
+  city: CityEntity;
 
   @Type(() => Number)
   @Expose()
@@ -42,9 +31,6 @@ export class AddressEntity implements Address {
   @Type(() => Date)
   @Expose()
   updatedAt: Date;
-
-  @Expose()
-  country: string;
 
   constructor(partial: Partial<AddressEntity>) {
     Object.assign(this, partial);
