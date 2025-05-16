@@ -1,7 +1,11 @@
-import { $Enums, Mission } from '@prisma/client';
+import { $Enums, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Expose, Type } from 'class-transformer';
+import { MissionPackageEntity } from './mission-package.entity';
 
+type Mission = Prisma.MissionGetPayload<{
+  include: { packages: { select: { package: true } } };
+}>;
 export class MissionEntity implements Mission {
   @Expose() id: string;
 
@@ -25,7 +29,17 @@ export class MissionEntity implements Mission {
   @Expose()
   updatedAt: Date;
 
+  @Expose()
+  @Type(({}) => MissionPackageEntity)
+  packages: MissionPackageEntity[];
+
   constructor(partial: Partial<MissionEntity>) {
+    if (partial?.packages) {
+      console.log({ partial });
+      // partial.packages.map(({ package: pkg }) => ({
+      //   package: plainToInstance(PackageEntity, pkg),
+      // }));
+    }
     Object.assign(this, partial);
   }
 }

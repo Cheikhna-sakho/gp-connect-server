@@ -32,6 +32,7 @@ export class AdvertisementsService {
       where,
       include: {
         author: true,
+        missions: { select: { packages: { select: { package: true } } } },
         departure: FULL_ADDRESS_INCLUDES_FIELDS,
         destination: FULL_ADDRESS_INCLUDES_FIELDS,
       },
@@ -45,6 +46,7 @@ export class AdvertisementsService {
       where,
       include: {
         author: true,
+        missions: { select: { packages: { select: { package: true } } } },
         departure: FULL_ADDRESS_INCLUDES_FIELDS,
         destination: FULL_ADDRESS_INCLUDES_FIELDS,
       },

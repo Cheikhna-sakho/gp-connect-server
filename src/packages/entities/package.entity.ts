@@ -40,7 +40,6 @@ export class PackageEntity implements PackageWithIncludes {
 
   @Expose() status: $Enums.PackageStatus;
   constructor(partial: Partial<PackageWithIncludes>) {
-    console.log({ m: partial });
     Object.assign(this, partial);
   }
 }
