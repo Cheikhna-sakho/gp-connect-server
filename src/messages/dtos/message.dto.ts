@@ -1,14 +1,23 @@
-import { Prisma } from '@prisma/client';
 import {
-  IsArray,
-  IsEmpty,
-  IsOptional,
   IsString,
+  IsOptional,
   IsUUID,
+  IsEnum,
+  IsEmpty,
+  ValidateIf,
+  ValidateNested,
 } from 'class-validator';
-import { UUID } from 'crypto';
+import { Prisma, $Enums } from '@prisma/client';
+import { CreateOfferDto } from './message-offer.dto';
+import { Type } from 'class-transformer';
 
-export class CreateMessageDto implements Prisma.MessageUncheckedCreateInput {
+const IsForType = (type: $Enums.MessageType) =>
+  ValidateIf((o) => o.type === type);
+
+export class CreateMessageDto
+  extends CreateOfferDto
+  implements Omit<Prisma.MessageUncheckedCreateInput, 'offer'>
+{
   @IsString()
   content: string;
 
@@ -16,14 +25,18 @@ export class CreateMessageDto implements Prisma.MessageUncheckedCreateInput {
   @IsUUID()
   conversationId: string;
 
+  @IsEnum($Enums.MessageType)
+  type?: $Enums.MessageType;
+
   @IsUUID()
   advertisementId: string;
 
   @IsEmpty()
   authorId: string;
 
-  @IsArray()
-  @IsOptional()
-  @IsUUID('4', { each: true })
-  packagesIds: UUID[];
+  @IsForType('OFFER')
+  @ValidateNested()
+  @Type(() => CreateOfferDto)
+  offer: CreateOfferDto;
+  // offer?: Prisma.MessageOfferUncheckedCreateInput;
 }

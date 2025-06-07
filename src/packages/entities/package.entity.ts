@@ -30,7 +30,7 @@ export class PackageEntity implements PackageWithIncludes {
   @Expose()
   updatedAt: Date;
   @Expose()
-  @Transform(({ value }) => {
+  @Transform(({ value }: { value?: PackageMedia[] }) => {
     if (typeof value?.[0] === 'string') {
       return value;
     }

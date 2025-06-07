@@ -57,7 +57,6 @@ export class AuthService {
       email: user.email,
       role: user.role,
     };
-    console.log({ success: 'reussi' });
     const accessToken = await this.signAccessTokenJwt(payload);
     const refreshToken = await this.signRefreshTokenJwt(payload);
     return { user, accessToken, refreshToken };

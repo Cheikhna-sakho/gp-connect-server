@@ -15,7 +15,7 @@ type UpdateBy = Prisma.PackageUpdateInput;
 type Delete = { where: Prisma.PackageWhereUniqueInput };
 
 const DEFAULT_INCLUDE = {
-  images: { include: { media: true } },
+  images: { select: { media: true } },
 } as const;
 @Injectable()
 export class PackagesService {
@@ -41,10 +41,12 @@ export class PackagesService {
     return this.packages.findMany({ include: DEFAULT_INCLUDE });
   }
   async findAllByUser(ownerId: string) {
-    return this.packages.findMany({
+    const a = await this.packages.findMany({
       where: { ownerId },
       include: DEFAULT_INCLUDE,
     });
+    console.log({ a });
+    return a;
   }
   async create(data: CreatePackageDto) {
     const { ownerId, ...rest } = data;
@@ -53,11 +55,28 @@ export class PackagesService {
       data: { ...rest, ownerId },
     });
   }
+  async createWithImages(
+    data: CreatePackageDto & { images?: Express.Multer.File[] },
+  ) {
+    const { ownerId, images, ...rest } = data;
+    const medias = await this.mediasService.createManyImages(images);
+    return this.packages.create({
+      data: {
+        ...rest,
+        owner: { connect: { id: ownerId } },
+        images: {
+          createMany: {
+            data: medias.map(({ id }) => ({ mediaId: id })),
+          },
+        },
+      },
+    });
+  }
   async createImage(packageId: string, data: Express.Multer.File[]) {
-    const images = await this.mediasService.createManyVideos(data);
-    // await this.packageMedias.createMany({
-    //   data: images.map(({ id: mediaId }) => ({ packageId, mediaId })),
-    // });
+    const images = await this.mediasService.createManyImages(data);
+    await this.packageMedias.createMany({
+      data: images.map(({ id: mediaId }) => ({ packageId, mediaId })),
+    });
     return images;
   }
   async updateWhere({ data, where }: Update) {

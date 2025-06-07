@@ -1,5 +1,4 @@
-import { $Enums, Prisma, User } from '@prisma/client';
-import { Exclude } from 'class-transformer';
+import { $Enums, Prisma } from '@prisma/client';
 import {
   IsEmail,
   IsEnum,
@@ -43,17 +42,4 @@ export class UpdateUserDto implements Prisma.UserUpdateInput {
   password: string;
   firstName: string;
   lastName: string;
-}
-export class FetchUserDto implements User {
-  id: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  name: string;
-  createdAt: Date;
-  updatedAt: Date;
-  role: $Enums.Role;
-  avatar: string;
-  @Exclude()
-  password: string;
 }

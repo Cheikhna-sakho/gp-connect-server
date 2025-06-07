@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 import { DatabaseService } from 'src/database/database.service';
-import * as imageSize from 'image-size';
+// import * as imageSize from 'image-size';
 import * as ffmpeg from 'fluent-ffmpeg';
 import * as fs from 'fs';
 @Injectable()
@@ -15,16 +15,10 @@ export class MediasService {
     this.medias = this.databaseService.media;
   }
   private extractImageMetadata(file: Express.Multer.File) {
-    const dimensions = imageSize.imageSize(file.buffer);
-    return {
-      width: dimensions.width,
-      height: dimensions.height,
-      mimeType: file.mimetype,
-      sizeMB: file.size / (1 * 1000000),
-    };
+    // const dimensions = imageSize.imageSize(file.buffer);
+    return JSON.stringify(file);
   }
   private extractVideoMetadata(file: Express.Multer.File): Promise<any> {
-    console.log({ file, p: file.path });
     return new Promise((resolve, reject) => {
       ffmpeg.ffprobe(file.path, (err, metadata) => {
         if (err) reject(err);
@@ -70,7 +64,6 @@ export class MediasService {
   async createImage(data: Express.Multer.File) {
     const image = await this.cloudinaryService.uploadFile(data);
     const metadata = this.extractImageMetadata(data);
-    console.log({ metadata });
     return this.medias.create({
       data: { url: image.url, type: 'image', metadata },
     });

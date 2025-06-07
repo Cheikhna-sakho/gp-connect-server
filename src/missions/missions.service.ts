@@ -29,8 +29,8 @@ export class MissionsService {
   constructor(private readonly databaseService: DatabaseService) {
     this.missions = this.databaseService.mission;
   }
-  async findAll() {
-    return this.missions.findMany({ include: MISSION_WITH_ALL_FIELDS });
+  async findAll(where?: Prisma.MissionWhereInput) {
+    return this.missions.findMany({ where, include: MISSION_WITH_ALL_FIELDS });
   }
   async find(where: any) {
     return this.missions.findMany({ where });

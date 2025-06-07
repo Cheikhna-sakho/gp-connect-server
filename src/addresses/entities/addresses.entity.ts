@@ -1,8 +1,14 @@
-import { Address } from '@prisma/client';
+// import { Address } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Expose, Type } from 'class-transformer';
 import { CityEntity } from './city.entity';
-
+import { Prisma } from '@prisma/client';
+export const ADDRESS_DEFAULT_INCLUDE = {
+  city: true,
+} as const;
+type Address = Prisma.AddressGetPayload<{
+  include: typeof ADDRESS_DEFAULT_INCLUDE;
+}>;
 export class AddressEntity implements Address {
   @Expose() id: string;
 

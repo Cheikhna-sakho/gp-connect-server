@@ -3,8 +3,11 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Expose, Type } from 'class-transformer';
 import { MissionPackageEntity } from './mission-package.entity';
 
+export const MISSION_DEFAULT_INCLUDE = {
+  packages: { select: { package: true } },
+} as const;
 type Mission = Prisma.MissionGetPayload<{
-  include: { packages: { select: { package: true } } };
+  include: typeof MISSION_DEFAULT_INCLUDE;
 }>;
 export class MissionEntity implements Mission {
   @Expose() id: string;
@@ -30,16 +33,23 @@ export class MissionEntity implements Mission {
   updatedAt: Date;
 
   @Expose()
-  @Type(({}) => MissionPackageEntity)
+  @Type(() => MissionPackageEntity)
   packages: MissionPackageEntity[];
 
+  @Expose()
+  get cumulatedWeight() {
+    return this.packages
+      ?.map(({ package: p }) => p.weight)
+      .reduce((total, weight) => {
+        total += Number(weight);
+        return total;
+      }, 0);
+  }
+  @Expose()
+  get packagesCount() {
+    return this.packages.length;
+  }
   constructor(partial: Partial<MissionEntity>) {
-    if (partial?.packages) {
-      console.log({ partial });
-      // partial.packages.map(({ package: pkg }) => ({
-      //   package: plainToInstance(PackageEntity, pkg),
-      // }));
-    }
     Object.assign(this, partial);
   }
 }

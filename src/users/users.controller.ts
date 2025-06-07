@@ -11,6 +11,7 @@ import {
   HttpStatus,
   Post,
   UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UUID } from 'crypto';
@@ -23,6 +24,8 @@ import { Serialize } from 'src/common/decorators/serialize.decorator';
 import { UserEntity } from './entities/user.entity';
 import { UpdateUserDto } from './dtos/user.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { MediaEntity } from 'src/medias/entities/media.entity';
 
 @Controller('users')
 export class UsersController {
@@ -45,9 +48,13 @@ export class UsersController {
   }
 
   @Post('avatar')
-  @Serialize(UserEntity)
-  @UseInterceptors(FileInterceptor('avatar'))
-  avatar(@GetUserId() id: UUID, avatar: Express.Multer.File) {
+  @Serialize(MediaEntity)
+  @UseInterceptors(
+    FileInterceptor('avatar', {
+      storage: memoryStorage(),
+    }),
+  )
+  avatar(@GetUserId() id: UUID, @UploadedFile() avatar: Express.Multer.File) {
     return this.usersService.createAvatar(id, avatar);
   }
 

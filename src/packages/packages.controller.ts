@@ -2,12 +2,9 @@ import {
   Body,
   Controller,
   Delete,
-  // FileTypeValidator,
   Get,
-  // MaxFileSizeValidator,
   NotFoundException,
   Param,
-  ParseFilePipe,
   Patch,
   Post,
   UploadedFiles,
@@ -27,6 +24,7 @@ import { GetUserId } from 'src/common/decorators/user.decorator';
 import { Serialize } from 'src/common/decorators/serialize.decorator';
 import { PackageEntity } from './entities/package.entity';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 
 @Controller('packages')
 export class PackagesController {
@@ -42,6 +40,7 @@ export class PackagesController {
   @Get()
   @Serialize(PackageEntity)
   getAllByOwner(@GetUserId() ownerId: UUID) {
+    console.log({ ownerId });
     return this.packagesService.findAllByUser(ownerId);
   }
   @Public()
@@ -60,22 +59,35 @@ export class PackagesController {
     data.ownerId = ownerId;
     return this.packagesService.create(data);
   }
+  // @Public()
+  @UseInterceptors(
+    FilesInterceptor('images', 10, {
+      storage: memoryStorage(),
+    }),
+  )
+  @Post(`full`)
+  async createWithImages(
+    @UploadedFiles()
+    images: Express.Multer.File[] = [],
+
+    @GetUserId() ownerId: UUID,
+    @Body() data: CreatePackageDto,
+  ) {
+    data.ownerId = ownerId;
+    return this.packagesService.createWithImages({ ...data, images });
+  }
   @Public()
-  @UseInterceptors(FilesInterceptor('images'))
+  @UseInterceptors(
+    FilesInterceptor('images', 5, {
+      storage: memoryStorage(),
+    }),
+  )
   @Post(`${ID_PARAM}/images`)
   createImages(
     @Param('id') id: UUID,
-    @UploadedFiles(
-      new ParseFilePipe({
-        validators: [
-          // new MaxFileSizeValidator({ maxSize: 3000 }),
-          // new FileTypeValidator({ fileType: /^image/ }),
-        ],
-      }),
-    )
+    @UploadedFiles()
     images: Express.Multer.File[],
   ) {
-    console.log({ images });
     return this.packagesService.createImage(id, images);
   }
   @Patch(ID_PARAM)

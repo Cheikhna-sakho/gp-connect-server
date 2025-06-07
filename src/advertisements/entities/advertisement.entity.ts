@@ -1,13 +1,27 @@
-import { $Enums, Address, Prisma, User } from '@prisma/client';
+import { $Enums, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Expose, Type } from 'class-transformer';
-import { AddressEntity } from 'src/addresses/entities/addresses.entity';
-import { MissionEntity } from 'src/missions/entities/mission.entity';
-import { UserEntity } from 'src/users/entities/user.entity';
+import {
+  ADDRESS_DEFAULT_INCLUDE,
+  AddressEntity,
+} from 'src/addresses/entities/addresses.entity';
+import {
+  MISSION_DEFAULT_INCLUDE,
+  MissionEntity,
+} from 'src/missions/entities/mission.entity';
+import {
+  USER_DEFAULT_INCLUDE,
+  UserEntity,
+} from 'src/users/entities/user.entity';
+
+export const ADVERTISEMENT_DEFAULT_INCLUDE = {
+  author: { include: USER_DEFAULT_INCLUDE },
+  missions: { select: MISSION_DEFAULT_INCLUDE },
+  departure: { include: ADDRESS_DEFAULT_INCLUDE },
+  destination: { include: ADDRESS_DEFAULT_INCLUDE },
+};
 type Advertisement = Prisma.AdvertisementGetPayload<{
-  include: {
-    missions: { select: { packages: { select: { package: true } } } };
-  };
+  include: typeof ADVERTISEMENT_DEFAULT_INCLUDE;
 }>;
 export class AdvertisementEntity implements Advertisement {
   @Expose() id: string;
@@ -50,15 +64,15 @@ export class AdvertisementEntity implements Advertisement {
 
   @Type(() => UserEntity)
   @Expose()
-  author: User;
+  author: UserEntity;
 
   @Type(() => AddressEntity)
   @Expose()
-  departure: Address;
+  departure: AddressEntity;
 
   @Type(() => AddressEntity)
   @Expose()
-  destination: Address;
+  destination: AddressEntity;
 
   @Expose()
   get reference() {
@@ -69,23 +83,17 @@ export class AdvertisementEntity implements Advertisement {
   missions: MissionEntity[];
   @Expose()
   get cumulatedWeight() {
-    return this.missions
-      ?.map(({ packages }) => packages.map(({ package: p }) => p.weight))
-      .flat()
-      .reduce((total, weight) => {
-        total += Number(weight);
-        console.log({ total });
-        return total;
-      }, 0);
+    return this.missions.reduce((total, { cumulatedWeight: weight }) => {
+      total += weight;
+      return total;
+    }, 0);
   }
   @Expose()
   get packagesCount() {
-    return this.missions
-      ?.map(({ packages }) => packages.length)
-      .reduce((total, len) => {
-        total += len;
-        return total;
-      }, 0);
+    return this.missions.reduce((total, { packagesCount: len }) => {
+      total += len;
+      return total;
+    }, 0);
   }
   constructor(partial: Partial<AdvertisementEntity>) {
     Object.assign(this, partial);

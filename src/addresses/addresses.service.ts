@@ -93,7 +93,6 @@ export class AddressesService {
     return { cityId };
   }
   async create(data: CreateAddressDto) {
-    console.log({ data });
     return this.address.create({ data });
   }
   async update({

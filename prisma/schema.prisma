@@ -50,6 +50,13 @@ enum ConversationStatus {
   ACTIVE   @map("active")
 }
 
+enum MessageOfferStatus {
+  PENDING  @map("pending")
+  // REJECTED @map("rejected")
+  ACCEPTED @map("accepted")
+  // DEAL @map("deal") /* comment car faudra reflechir si veux un system de confirmation apres acceptation  traquer q*/
+}
+
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
@@ -86,7 +93,7 @@ model UserAvatar {
 model Address {
   id        String   @id @default(uuid())
   street    String?
-  zipCode   String?   @map("zip_code")
+  zipCode   String?  @map("zip_code")
   cityId    String   @map("city_id")
   latitude  Decimal? @db.Decimal(8, 6)
   longitude Decimal? @db.Decimal(9, 6)
@@ -172,7 +179,7 @@ model Mission {
   advertisement Advertisement    @relation(fields: [advertisementId], references: [id], onDelete: Cascade)
   transaction   Transaction?
   packages      MissionPackage[]
-  Offer         Offer[]
+  Offer         MessageOffer[]
 
   @@map("missions")
 }
@@ -240,6 +247,7 @@ model Conversation {
   shipper       User          @relation("shipper", fields: [shipperId], references: [id])
   carrier       User          @relation("carrier", fields: [carrierId], references: [id])
 
+  @@unique([advertisementId, shipperId, carrierId])
   @@map("conversations")
 }
 
@@ -261,7 +269,7 @@ model Message {
   conversation Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   author       User           @relation("sender", fields: [authorId], references: [id])
   medias       MessageMedia[]
-  Offer        Offer[]
+  offer        MessageOffer?
 
   @@map("messages")
 }
@@ -277,15 +285,16 @@ model MessageMedia {
   @@map("message_medias")
 }
 
-model Offer {
-  id        String  @id @default(uuid())
+model MessageOffer {
+  id        String             @id @default(uuid())
   price     Decimal
-  weight    Decimal @default(0)
-  messageId String
-  missionId String?
-  accepted  Boolean @default(false)
-  confirmed Boolean @default(false)
+  weight    Decimal            @default(0)
+  messageId String             @unique @map("message_id")
+  missionId String?            @map("mission_id")
+  status    MessageOfferStatus @default(PENDING)
 
   mission Mission? @relation(fields: [missionId], references: [id])
   message Message  @relation(fields: [messageId], references: [id])
+
+  @@map("message_offers")
 }

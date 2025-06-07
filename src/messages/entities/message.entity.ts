@@ -1,5 +1,6 @@
-import { $Enums, Message } from '@prisma/client';
+import { $Enums, Message, MessageOffer } from '@prisma/client';
 import { Expose, Type } from 'class-transformer';
+import { MessageOfferEntity } from './message-offer.entity';
 
 export class MessageEntity implements Message {
   @Expose() id: string;
@@ -20,7 +21,12 @@ export class MessageEntity implements Message {
 
   mediaId: string;
 
+  @Expose()
   type: $Enums.MessageType;
+
+  @Expose()
+  @Type(() => MessageOfferEntity)
+  offers: MessageOffer[];
 
   constructor(partial: Partial<MessageEntity>) {
     Object.assign(this, partial);

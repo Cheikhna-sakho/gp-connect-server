@@ -5,6 +5,7 @@ import * as bcrypt from 'bcrypt';
 import { UpdateUserDto } from './dtos/user.dto';
 import { MediasService } from 'src/medias/medias.service';
 import { UUID } from 'crypto';
+import { USER_DEFAULT_INCLUDE } from './entities/user.entity';
 
 type Find = { where: Prisma.UserWhereInput };
 type FindOne = { where: Prisma.UserWhereInput };
@@ -27,6 +28,7 @@ export class UsersService {
     private readonly mediasService: MediasService,
   ) {
     this.users = this.databaseService.user;
+    this.avatar = this.databaseService.userAvatar;
   }
   async hashPassword(password: string) {
     return bcrypt.hash(password, 10);
@@ -37,22 +39,25 @@ export class UsersService {
   }
   async createAvatar(userId: UUID, image: Express.Multer.File) {
     const avatar = await this.mediasService.createImage(image);
-    await this.avatar.create({ data: { imageId: avatar.id, userId } });
+    const avatarExist = await this.avatar.findUnique({ where: { userId } });
+    if (avatarExist) {
+      await this.avatar.update({
+        where: { userId },
+        data: { imageId: avatar.id },
+      });
+    } else await this.avatar.create({ data: { imageId: avatar.id, userId } });
     return avatar;
   }
   async findBy(where: FindUnique) {
-    // console.log({ where });
-    return this.users.findFirst({ where });
+    return this.users.findUnique({ where, include: USER_DEFAULT_INCLUDE });
   }
   async find({ where }: Find) {
-    return this.users.findFirst({ where });
+    return this.users.findFirst({ where, include: USER_DEFAULT_INCLUDE });
   }
   async findOne({ where }: FindOne) {
-    return this.users.findFirst({ where });
+    return this.users.findFirst({ where, include: USER_DEFAULT_INCLUDE });
   }
-  async findAll() {
-    return this.users.findMany();
-  }
+
   async updateWhere({ data, where }: Update) {
     data.password &&= await this.hashPassword(data.password as string);
     return this.users.update({ where, data });

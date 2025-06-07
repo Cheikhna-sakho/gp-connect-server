@@ -15,14 +15,10 @@ import { GetUserId } from 'src/common/decorators/user.decorator';
 import { Serialize } from 'src/common/decorators/serialize.decorator';
 import { ConversationEntity } from './entities/conversation.entity';
 import { CreateConversationDto } from './dtos/create-conversation.dto';
-import { AdvertisementsService } from 'src/advertisements/advertisements.service';
 
 @Controller('conversations')
 export class ConversationsController {
-  constructor(
-    private readonly conversationsService: ConversationsService,
-    private readonly advertisementsService: AdvertisementsService,
-  ) {}
+  constructor(private readonly conversationsService: ConversationsService) {}
 
   @Get()
   @Serialize(ConversationEntity)
@@ -35,7 +31,8 @@ export class ConversationsController {
   @Get(ID_PARAM)
   @Serialize(ConversationEntity)
   async getById(@GetUserId() userId: UUID, @Param('id') id: UUID) {
-    return this.conversationsService.findBy({ id });
+    console.log({ id });
+    return this.conversationsService.findBy({ id }); //bug a corriger sinon un autre utilisateur aura accs a une conv
   }
   @Get('by')
   @Serialize(ConversationEntity)

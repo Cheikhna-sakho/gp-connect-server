@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from 'src/database/database.service';
 import { CreateAdvertisementDto } from './dtos/create-advertisements.dto';
-import { FULL_ADDRESS_INCLUDES_FIELDS } from 'src/addresses/constants/full-address.const';
+import { ADVERTISEMENT_DEFAULT_INCLUDE } from './entities/advertisement.entity';
 
 type Find = { where: Prisma.AdvertisementWhereInput };
 type FindOne = {
@@ -16,6 +16,7 @@ type Update = {
 };
 type UpdateBy = Prisma.AdvertisementUpdateInput;
 type Delete = { where: Prisma.AdvertisementWhereUniqueInput };
+
 // const FULL_ADDRESS_INCLUDES_FIELDS = { include: { city: true } };
 @Injectable()
 export class AdvertisementsService {
@@ -30,12 +31,7 @@ export class AdvertisementsService {
   async findBy(where?: FindUnique) {
     return this.advertisements.findFirst({
       where,
-      include: {
-        author: true,
-        missions: { select: { packages: { select: { package: true } } } },
-        departure: FULL_ADDRESS_INCLUDES_FIELDS,
-        destination: FULL_ADDRESS_INCLUDES_FIELDS,
-      },
+      include: ADVERTISEMENT_DEFAULT_INCLUDE,
     });
   }
   async findOne({ where, select }: FindOne) {
@@ -44,12 +40,7 @@ export class AdvertisementsService {
   async findAll(where?: Prisma.AdvertisementWhereInput) {
     return this.advertisements.findMany({
       where,
-      include: {
-        author: true,
-        missions: { select: { packages: { select: { package: true } } } },
-        departure: FULL_ADDRESS_INCLUDES_FIELDS,
-        destination: FULL_ADDRESS_INCLUDES_FIELDS,
-      },
+      include: ADVERTISEMENT_DEFAULT_INCLUDE,
     });
   }
 

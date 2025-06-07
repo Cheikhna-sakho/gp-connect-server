@@ -83,7 +83,7 @@ export class AdvertisementsController {
       { ...departure },
       { id: true },
     );
-    // console.log({ departure, destination });
+
     return this.advertisementsService.create({
       ...dto,
       destinationId,
