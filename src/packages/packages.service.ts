@@ -41,12 +41,10 @@ export class PackagesService {
     return this.packages.findMany({ include: DEFAULT_INCLUDE });
   }
   async findAllByUser(ownerId: string) {
-    const a = await this.packages.findMany({
+    return this.packages.findMany({
       where: { ownerId },
       include: DEFAULT_INCLUDE,
     });
-    console.log({ a });
-    return a;
   }
   async create(data: CreatePackageDto) {
     const { ownerId, ...rest } = data;

@@ -2,7 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from 'src/database/database.service';
 import { CreateAdvertisementDto } from './dtos/create-advertisements.dto';
-import { ADVERTISEMENT_DEFAULT_INCLUDE } from './entities/advertisement.entity';
+import {
+  ADVERTISEMENT_CONVERSATION_INCLUDE,
+  ADVERTISEMENT_DEFAULT_INCLUDE,
+} from './entities/advertisement.entity';
 
 type Find = { where: Prisma.AdvertisementWhereInput };
 type FindOne = {
@@ -29,9 +32,12 @@ export class AdvertisementsService {
     return this.advertisements.findFirst({ where });
   }
   async findBy(where?: FindUnique) {
-    return this.advertisements.findFirst({
+    return this.advertisements.findUnique({
       where,
-      include: ADVERTISEMENT_DEFAULT_INCLUDE,
+      include: {
+        ...ADVERTISEMENT_DEFAULT_INCLUDE,
+        conversations: ADVERTISEMENT_CONVERSATION_INCLUDE,
+      },
     });
   }
   async findOne({ where, select }: FindOne) {

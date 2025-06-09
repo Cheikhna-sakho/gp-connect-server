@@ -1,6 +1,6 @@
 import { $Enums, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
-import { Expose, Type } from 'class-transformer';
+import { Expose, plainToInstance, Type } from 'class-transformer';
 import {
   ADDRESS_DEFAULT_INCLUDE,
   AddressEntity,
@@ -20,9 +20,24 @@ export const ADVERTISEMENT_DEFAULT_INCLUDE = {
   departure: { include: ADDRESS_DEFAULT_INCLUDE },
   destination: { include: ADDRESS_DEFAULT_INCLUDE },
 };
+export const ADVERTISEMENT_CONVERSATION_INCLUDE = {
+  select: {
+    messages: {
+      select: {
+        createdAt: true,
+        offer: true,
+        author: { select: { firstName: true, lastName: true, id: true } },
+      },
+      where: { offer: { status: 'PENDING' } },
+    },
+  },
+} as const;
 type Advertisement = Prisma.AdvertisementGetPayload<{
   include: typeof ADVERTISEMENT_DEFAULT_INCLUDE;
 }>;
+type AdvertisementConversation = Prisma.ConversationGetPayload<
+  typeof ADVERTISEMENT_CONVERSATION_INCLUDE
+>[];
 export class AdvertisementEntity implements Advertisement {
   @Expose() id: string;
 
@@ -95,7 +110,31 @@ export class AdvertisementEntity implements Advertisement {
       return total;
     }, 0);
   }
-  constructor(partial: Partial<AdvertisementEntity>) {
+
+  private _conversations: AdvertisementConversation;
+
+  @Expose()
+  get offers() {
+    return this._conversations
+      ?.map((c) =>
+        c.messages?.map(({ createdAt, ...m }) => ({
+          ...m.offer,
+          createdAt,
+          author: plainToInstance(UserEntity, m.author),
+        })),
+      )
+      ?.flat();
+  }
+  constructor(
+    partial: Partial<
+      AdvertisementEntity & {
+        conversations?: AdvertisementConversation;
+      }
+    >,
+  ) {
     Object.assign(this, partial);
+    if (partial?.conversations) {
+      this._conversations = partial.conversations;
+    }
   }
 }

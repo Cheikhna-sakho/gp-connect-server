@@ -28,7 +28,6 @@ export class MessagesService {
     let newOffer = {} as MessageOffer;
     const message = await this.messages.create({ data });
     if (data.type === 'OFFER') {
-      console.log({ data });
       newOffer = await this.createOffer({
         ...offer,
         messageId: message.id,

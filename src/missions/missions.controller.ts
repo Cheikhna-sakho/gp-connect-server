@@ -1,11 +1,11 @@
 import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { MissionsService } from './missions.service';
-import { CreateMissionDto } from './dtos/missions.dto';
+import { CreateMissionDto } from './dtos/create-mission.dto';
 import { Roles } from 'src/auth/decorators/role.decorator';
 import { RolesGuard } from 'src/auth/guards/role.guard';
 import { GetUserId } from 'src/common/decorators/user.decorator';
 import { UUID } from 'crypto';
-import { MissionPartial } from './dtos/mission-partial.dto';
+import { MissionQuery } from './dtos/mission-query.dto';
 
 @Controller('missions')
 export class MissionsController {
@@ -17,15 +17,8 @@ export class MissionsController {
     return this.missionsService.findAll();
   }
   @Get()
-  getOwn(@GetUserId() id: UUID, @Query() where: MissionPartial) {
-    return this.missionsService.findAll({
-      AND: [
-        {
-          OR: [{ initiatorId: id }, { acceptorId: id }],
-        },
-        where,
-      ],
-    });
+  getOwn(@GetUserId() id: UUID, @Query() where: MissionQuery) {
+    return this.missionsService.findByUser(id, where);
   }
 
   @Post()

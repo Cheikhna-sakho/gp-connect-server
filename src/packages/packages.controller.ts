@@ -40,7 +40,6 @@ export class PackagesController {
   @Get()
   @Serialize(PackageEntity)
   getAllByOwner(@GetUserId() ownerId: UUID) {
-    console.log({ ownerId });
     return this.packagesService.findAllByUser(ownerId);
   }
   @Public()

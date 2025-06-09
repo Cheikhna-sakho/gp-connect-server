@@ -2,7 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { Mission, Prisma } from '@prisma/client';
 import { UUID } from 'crypto';
 import { DatabaseService } from 'src/database/database.service';
-import { CreateMissionDto } from './dtos/missions.dto';
+import { CreateMissionDto } from './dtos/create-mission.dto';
+import { MissionQuery } from './dtos/mission-query.dto';
+import { MISSION_DEFAULT_INCLUDE } from './entities/mission.entity';
 const getSelectFields = <T extends string>(fields: T[]) => {
   return fields.reduce(
     (selectedFields, field) => {
@@ -35,10 +37,22 @@ export class MissionsService {
   async find(where: any) {
     return this.missions.findMany({ where });
   }
-  async findByUser(userId: UUID) {
+  async findByUser(
+    userId: UUID,
+    { userRole = 'initiator', ...where }: MissionQuery,
+  ) {
+    const userToInclude = userRole === 'acceptor' ? 'initiator' : 'acceptor';
     return this.missions.findMany({
-      where: { initiatorId: userId },
-      include: MISSION_WITH_ALL_FIELDS,
+      where: {
+        AND: [
+          {
+            OR: [{ initiatorId: userId }, { acceptorId: userId }],
+            status: { not: 'PENDING' },
+          },
+          where,
+        ],
+      },
+      include: { ...MISSION_DEFAULT_INCLUDE, [userToInclude]: true },
     });
   }
   async findOne(id: UUID) {

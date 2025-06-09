@@ -31,7 +31,6 @@ export class ConversationsController {
   @Get(ID_PARAM)
   @Serialize(ConversationEntity)
   async getById(@GetUserId() userId: UUID, @Param('id') id: UUID) {
-    console.log({ id });
     return this.conversationsService.findBy({ id }); //bug a corriger sinon un autre utilisateur aura accs a une conv
   }
   @Get('by')
