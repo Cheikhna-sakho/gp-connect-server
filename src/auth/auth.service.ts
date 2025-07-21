@@ -46,11 +46,10 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException(errorMessages);
     }
-    // const isPasswordValid = await this.verifyPassword(password, user.password);
-    // console.log({ error: 'password inc' });
-    // if (!isPasswordValid) {
-    //   throw new UnauthorizedException(errorMessages);
-    // }
+    const isPasswordValid = await this.verifyPassword(password, user.password);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException(errorMessages);
+    }
     delete user.password;
     const payload: JwtPayload = {
       id: user.id as UUID,

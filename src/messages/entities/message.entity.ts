@@ -26,7 +26,7 @@ export class MessageEntity implements Message {
 
   @Expose()
   @Type(() => MessageOfferEntity)
-  offers: MessageOffer[];
+  offer: MessageOffer;
 
   constructor(partial: Partial<MessageEntity>) {
     Object.assign(this, partial);
