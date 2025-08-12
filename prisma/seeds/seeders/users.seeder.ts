@@ -3,7 +3,7 @@ import { prismaClient } from '../configs/prisma-client';
 import { usersFixtures } from '../fixtures';
 import * as bcrypt from 'bcrypt';
 import { plainToInstance } from 'class-transformer';
-import { CreateUserDto } from 'src/users/dtos/user.dto';
+import { CreateUserDto } from '../../../src/users/dtos/user.dto';
 import { validate } from 'class-validator';
 const { user } = prismaClient;
 export const seedUsers = async () => {

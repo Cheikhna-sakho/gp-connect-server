@@ -52,7 +52,7 @@ enum ConversationStatus {
 
 enum MessageOfferStatus {
   PENDING  @map("pending")
-  // REJECTED @map("rejected")
+  REJECTED @map("rejected")
   ACCEPTED @map("accepted")
   // DEAL @map("deal") /* comment car faudra reflechir si veux un system de confirmation apres acceptation  traquer q*/
 }
@@ -286,15 +286,14 @@ model MessageMedia {
 }
 
 model MessageOffer {
-  id        String             @id @default(uuid())
+  id        String             @id
   price     Decimal
   weight    Decimal            @default(0)
-  messageId String             @unique @map("message_id")
   missionId String?            @map("mission_id")
   status    MessageOfferStatus @default(PENDING)
 
   mission Mission? @relation(fields: [missionId], references: [id])
-  message Message  @relation(fields: [messageId], references: [id])
+  message Message  @relation(fields: [id], references: [id])
 
   @@map("message_offers")
 }

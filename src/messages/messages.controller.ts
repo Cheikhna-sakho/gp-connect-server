@@ -17,6 +17,7 @@ import { ID_PARAM, SetIdParam } from 'src/common/constants/route.util.const';
 import { GetUserId } from 'src/common/decorators/user.decorator';
 import { CreateMessageDto } from './dtos/message.dto';
 import { ConversationsService } from 'src/conversations/conversations.service';
+import { MessageUpdateDto } from './dtos/message-update.dto';
 // import { FilesInterceptor } from '@nestjs/platform-express';
 
 @Controller('messages')
@@ -62,11 +63,12 @@ export class MessagesController {
   //   return this.messagesService.createAudio(vocal);
   // }
 
-  @Patch(`${ID_PARAM}/content`)
-  update(@Param('id') id: UUID, @Body() content: string) {
+  @Patch(`${ID_PARAM}`)
+  update(@Param('id') id: UUID, @Body() data: MessageUpdateDto) {
+    if (data.offer) return this.messagesService.updateOffer(id, data.offer);
     return this.messagesService.update({
       where: { id },
-      data: { content },
+      data: data as Omit<MessageUpdateDto, 'offer'>,
     });
   }
 

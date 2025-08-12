@@ -18,11 +18,13 @@ export class AuthController {
   @Post('login')
   @Serialize(LoginEntity)
   login(@Body() { email, password }: { email: string; password: string }) {
+    console.log('first');
     return this.authService.login(email, password);
   }
   @Post('register')
   @Serialize(UserEntity)
   register(@Body() data: CreateUserDto) {
+    console.log('first');
     return this.authService.register(data);
   }
 

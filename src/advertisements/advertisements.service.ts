@@ -57,7 +57,9 @@ export class AdvertisementsService {
       data: {
         ...data,
         arrivalDate: new Date(data.arrivalDate),
-        departureDate: new Date(data.departureDate),
+        departureDate: data.departureDate
+          ? new Date(data.departureDate)
+          : undefined,
         author: { connect: { id: authorId } },
         departure: {
           connect: { id: departureId },

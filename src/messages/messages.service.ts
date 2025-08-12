@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { MessageOffer, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { UUID } from 'crypto';
 import { DatabaseService } from 'src/database/database.service';
 import { CreateMessageDto } from './dtos/message.dto';
 import { MediasService } from 'src/medias/medias.service';
+import { UpdateOfferDto } from './dtos/message-offer-update.dto';
 
 @Injectable()
 export class MessagesService {
@@ -25,18 +26,19 @@ export class MessagesService {
   }
 
   async create({ offer, ...data }: Omit<CreateMessageDto, 'advertisementId'>) {
-    let newOffer = {} as MessageOffer;
-    const message = await this.messages.create({ data });
-    if (data.type === 'OFFER') {
-      newOffer = await this.createOffer({
-        ...offer,
-        messageId: message.id,
-      });
-    }
-    return { ...message, offers: [newOffer] };
+    return this.messages.create({
+      data: {
+        ...data,
+        ...(data.type === 'OFFER' ? { offer: { create: offer } } : {}),
+      },
+      include: { offer: true },
+    });
   }
   createOffer(data: Prisma.MessageOfferUncheckedCreateInput) {
     return this.offers.create({ data });
+  }
+  updateOffer(id: string, data: UpdateOfferDto) {
+    return this.offers.update({ where: { id }, data });
   }
   async createAudio(audio: Express.Multer.File) {
     return this.mediasService.createAudio(audio);

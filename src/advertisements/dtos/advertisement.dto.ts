@@ -1,6 +1,6 @@
 import { $Enums, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
-import { Transform, Type } from 'class-transformer';
+import { Type } from 'class-transformer';
 import {
   IsDate,
   IsEmpty,
@@ -37,10 +37,12 @@ export class AdvertisementDto
 
   @IsDate()
   @IsOptional()
-  @Transform(({ value }) => new Date(value))
+  @Type(() => Date)
+  // @Transform(({ value }) => new Date(value))
   departureDate?: Date;
 
   @IsDate()
-  @Transform(({ value }) => new Date(value))
+  @Type(() => Date)
+  // @Transform(({ value }) => new Date(value))
   arrivalDate: Date;
 }
