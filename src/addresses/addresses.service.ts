@@ -5,6 +5,7 @@ import { DatabaseService } from 'src/database/database.service';
 import { CreateAddressDto } from './dtos/create-address.dto';
 import { CreateCityDto } from './dtos/create-city-dto';
 import { CreateFullAddressDto } from './dtos/create-full-address.dto';
+import { Decimal } from '@prisma/client/runtime/library';
 
 @Injectable()
 export class AddressesService {
@@ -54,7 +55,10 @@ export class AddressesService {
       where: {
         OR: [
           { cityId, ...rest },
-          { latitude, longitude },
+          {
+            latitude: new Decimal(latitude).toDecimalPlaces(6),
+            longitude: new Decimal(longitude).toDecimalPlaces(6),
+          },
         ],
       },
       select: returning,
