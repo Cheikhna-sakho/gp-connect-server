@@ -9,9 +9,9 @@ datasource db {
 }
 
 enum Role {
-  USER  @map("user")
-  ADMIN @map("admin")
-  GP    @map("gp")
+  SHIPPER @map("shipper")
+  ADMIN   @map("admin")
+  CARRIER @map("carrier")
 }
 
 enum TransactionMethod {
@@ -30,6 +30,7 @@ enum PackageStatus {
   PENDING    @map("pending")
   PICKED_UP  @map("picked_up")
   IN_TRANSIT @map("in_transit")
+  DISPUTED   @map("disputed")
   DELIVERED  @map("delivered")
 }
 
@@ -37,11 +38,13 @@ enum MissionStatus {
   PENDING   @map("pending")
   ACCEPTED  @map("accepted")
   COMPLETED @map("completed")
+  CANCELLED @map("canceled")
+  DISPUTED  @map("disputed") // voir si c'est plus pertinent dans colis plutot qu'ici
 }
 
 enum AdvertisementType {
-  DeliveryRequest @map("delivery_request")
-  DeliveryOffer   @map("delivery_offer")
+  SHIPPING @map("shipping")
+  DELIVERY @map("delivery")
 }
 
 enum ConversationStatus {
@@ -58,23 +61,35 @@ enum MessageOfferStatus {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  firstName String   @map("first_name")
-  lastName  String   @map("last_name")
-  password  String
-  role      Role     @default(USER)
+  id        String  @id @default(uuid())
+  email     String  @unique
+  phone     String? @unique
+  firstName String  @map("first_name")
+  lastName  String  @map("last_name")
+  password  String?
+  role      Role    @default(SHIPPER)
+
+  //  VERIFY
+  emailVerifiedAt  DateTime? @map("email_verified_at")
+  phoneVerifiedAt  DateTime? @map("phone_verified_at")
+  idCardVerifiedAt DateTime? @map("id_card_verified_at")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   advertisements         Advertisement[]
   packages               Package[]
-  missions               Mission[]       @relation("Initiator")
-  acceptedMissions       Mission[]       @relation("Acceptor")
-  messages               Message[]       @relation("sender")
-  ConversationsAsShipper Conversation[]  @relation("shipper")
-  ConversationsAsCarrier Conversation[]  @relation("carrier")
+  missions               Mission[]           @relation("Initiator")
+  acceptedMissions       Mission[]           @relation("Acceptor")
+  messages               Message[]           @relation("sender")
+  ConversationsAsShipper Conversation[]      @relation("shipper")
+  ConversationsAsCarrier Conversation[]      @relation("carrier")
   avatar                 UserAvatar?
+  initiateProof          MissionProof[]      @relation("ProofCreatedBy")
+  verifiedProof          MissionProof[]      @relation("ProofVerifiedBy")
+  tokens                 VerificationToken[]
+  identities             UserIdentity[]
+  providers              UserProvider[]
 
   @@map("users")
 }
@@ -88,6 +103,80 @@ model UserAvatar {
 
   @@id([userId, imageId])
   @@map("user_avatar")
+}
+
+enum UserIdentityStatus {
+  PENDING        @map("pending")
+  VERIFIED       @map("verified")
+  REJECTED       @map("rejected")
+  REQUIRES_INPUT @map("requires_input")
+  CANCELED       @map("canceled")
+}
+
+enum UserIdentityProvider {
+  STRIPE_IDENTITY @map("stripe_identity")
+}
+
+model UserIdentity {
+  provider   UserIdentityProvider
+  providerId String               @map("provider_id")
+  status     UserIdentityStatus
+  userId     String               @map("user_id")
+  reason     String?
+  expiredAt  DateTime?            @map("expired_at")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // 1 user x 1 provider max
+  @@unique([userId, provider])
+  // providerId unique côté provider
+  @@unique([provider, providerId])
+  @@map("user_identities")
+}
+
+enum AuthProvider {
+  GOOGLE @map("google")
+  // plus tard : APPLE, GITHUB, etc.
+}
+
+model UserProvider {
+  id             String       @id @default(uuid())
+  userId         String       @map("user_id")
+  provider       AuthProvider
+  providerUserId String       @map("provider_user_id")
+  email          String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@unique([userId, provider])
+  @@map("user_providers")
+}
+
+enum VerificationTokenType {
+  EMAIL @map("email")
+  PHONE @map("phone")
+}
+
+model VerificationToken {
+  id        String                @id @default(uuid())
+  userId    String                @map("user_id")
+  type      VerificationTokenType
+  tokenHash String                @map("token_hash")
+  expiresAt DateTime              @map("expires_at")
+  usedAt    DateTime?             @map("used_at")
+  createdAt DateTime              @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@map("verification_tokens")
 }
 
 model Address {
@@ -127,9 +216,10 @@ model Media {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  packages   PackageMedia[]
-  messages   MessageMedia[]
-  userAvatar UserAvatar[]
+  packages      PackageMedia[]
+  messages      MessageMedia[]
+  userAvatar    UserAvatar[]
+  missionProofs MissionProofImage[]
 
   @@map("medias")
 }
@@ -144,9 +234,10 @@ model Package {
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
 
-  owner   User            @relation(fields: [ownerId], references: [id])
-  images  PackageMedia[]
-  mission MissionPackage?
+  owner         User              @relation(fields: [ownerId], references: [id])
+  images        PackageMedia[]
+  mission       MissionPackage[]
+  advertisement ShippingPAckages?
 
   @@map("packages")
 }
@@ -167,26 +258,28 @@ model PackageMedia {
 model Mission {
   id              String        @id @default(uuid())
   advertisementId String        @map("advertisement_id")
-  initiatorId     String        @map("initiator_id")
-  acceptorId      String?       @map("acceptor_id")
+  shipperId       String        @map("shipper_id")
+  carrierId       String?       @map("carrier_id")
   negotiatedPrice Decimal       @default(0) @map("negotiated_price")
   status          MissionStatus @default(PENDING)
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
-  initiator     User             @relation("Initiator", fields: [initiatorId], references: [id])
-  acceptor      User?            @relation("Acceptor", fields: [acceptorId], references: [id])
+  shipper        User             @relation("Initiator", fields: [shipperId], references: [id])
+  carrier       User?            @relation("Acceptor", fields: [carrierId], references: [id])
   advertisement Advertisement    @relation(fields: [advertisementId], references: [id], onDelete: Cascade)
   transaction   Transaction?
   packages      MissionPackage[]
   Offer         MessageOffer[]
+  proofs        MissionProof[]
+  conversations Conversation[]
 
   @@map("missions")
 }
 
 model MissionPackage {
   missionId String @map("missionId")
-  packageId String @unique @map("package_id")
+  packageId String @map("package_id")
 
   package Package @relation(fields: [packageId], references: [id])
   mission Mission @relation(fields: [missionId], references: [id])
@@ -195,9 +288,53 @@ model MissionPackage {
   @@map("mission_packages")
 }
 
+enum ProofType {
+  PICKUP
+  DELIVERY
+  OTHER
+}
+
+model MissionProof {
+  id        String    @id @default(uuid())
+  missionId String    @map("mission_id")
+  type      ProofType
+
+  otpHash      String?   @map("otp_hash")
+  otpExpiresAt DateTime? @map("otp_expires_at")
+  otpUsedAt    DateTime? @map("otp_used_at")
+
+  createdById  String? @map("created_by_id")
+  verifiedById String? @map("verified_by_id")
+
+  note      String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  mission    Mission             @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  createdBy  User?               @relation("ProofCreatedBy", fields: [createdById], references: [id])
+  verifiedBy User?               @relation("ProofVerifiedBy", fields: [verifiedById], references: [id])
+  images     MissionProofImage[]
+
+  @@unique([missionId, type])
+  @@index([missionId])
+  @@map("delivery_proofs")
+}
+
+model MissionProofImage {
+  id        String   @id @default(uuid())
+  proofId   String   @map("proof_id")
+  imageId   String   @map("image_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  proof MissionProof @relation(fields: [proofId], references: [id], onDelete: Cascade)
+  image Media        @relation(fields: [imageId], references: [id], onDelete: Cascade)
+
+  @@index([proofId])
+  @@map("delivery_proof_images")
+}
+
 model Advertisement {
   id            String            @id @default(uuid())
-  type          AdvertisementType @default(DeliveryOffer)
+  type          AdvertisementType @default(DELIVERY)
   price         Decimal           @default(0)
   maxWeight     Decimal           @default(0) @map("max_weight") @db.Decimal(7, 3)
   weight        Decimal           @default(0) @map("weight") @db.Decimal(7, 3)
@@ -211,12 +348,23 @@ model Advertisement {
 
   author User @relation(fields: [authorId], references: [id])
 
-  destination   Address        @relation("destination", fields: [destinationId], references: [id])
-  departure     Address        @relation("departure", fields: [departureId], references: [id])
+  destination   Address            @relation("destination", fields: [destinationId], references: [id])
+  departure     Address            @relation("departure", fields: [departureId], references: [id])
   missions      Mission[]
   conversations Conversation[]
+  packages      ShippingPAckages[]
 
   @@map("advertisements")
+}
+
+model ShippingPAckages {
+  packageId       String @unique
+  advertisementId String
+
+  package       Package       @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  advertisement Advertisement @relation(fields: [advertisementId], references: [id])
+
+  @@id([packageId, advertisementId])
 }
 
 model Transaction {
@@ -235,13 +383,16 @@ model Transaction {
 }
 
 model Conversation {
-  id              String   @id @default(uuid())
-  advertisementId String   @map("advertisement_id")
+  id              String @id @default(uuid())
+  advertisementId String @map("advertisement_id")
   shipperId       String
   carrierId       String
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  missionId       String @map("mission_id")
 
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  mission       Mission       @relation(fields: [missionId], references: [id])
   advertisement Advertisement @relation(fields: [advertisementId], references: [id])
   messages      Message[]
   shipper       User          @relation("shipper", fields: [shipperId], references: [id])
@@ -291,9 +442,11 @@ model MessageOffer {
   weight    Decimal            @default(0)
   missionId String?            @map("mission_id")
   status    MessageOfferStatus @default(PENDING)
+  createdAt DateTime           @default(now()) @map("created_at")
+  updatedAt DateTime           @updatedAt @map("updated_at")
 
   mission Mission? @relation(fields: [missionId], references: [id])
-  message Message  @relation(fields: [id], references: [id])
+  message Message  @relation(fields: [id], references: [id], onDelete: Cascade)
 
   @@map("message_offers")
 }

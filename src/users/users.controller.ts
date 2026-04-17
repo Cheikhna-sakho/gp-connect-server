@@ -12,6 +12,7 @@ import {
   Post,
   UseInterceptors,
   UploadedFile,
+  Query,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UUID } from 'crypto';
@@ -22,10 +23,10 @@ import { ID_PARAM } from 'src/common/constants/route.util.const';
 import { GetUserId } from 'src/common/decorators/user.decorator';
 import { Serialize } from 'src/common/decorators/serialize.decorator';
 import { UserEntity } from './entities/user.entity';
-import { UpdateUserDto } from './dtos/user.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { MediaEntity } from 'src/medias/entities/media.entity';
+import { UpdateUserDto } from './dtos/update-user-dto';
 
 @Controller('users')
 export class UsersController {
@@ -56,6 +57,11 @@ export class UsersController {
   )
   avatar(@GetUserId() id: UUID, @UploadedFile() avatar: Express.Multer.File) {
     return this.usersService.createAvatar(id, avatar);
+  }
+
+  @Post('verify/email')
+  async verifyEmail(@Query('token') token: string) {
+    return this.usersService.verifyEmailToken(token);
   }
 
   @HttpCode(HttpStatus.NO_CONTENT)

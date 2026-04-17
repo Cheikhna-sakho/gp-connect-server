@@ -19,7 +19,7 @@ import { UUID } from 'crypto';
 // import { Roles } from 'src/auth/decorators/role.decorator';
 import { Public } from 'src/common/decorators/public.decorator';
 import { CreatePackageDto } from './dtos/package.dto';
-import { ID_PARAM } from 'src/common/constants/route.util.const';
+import { ID_PARAM, SetIdParam } from 'src/common/constants/route.util.const';
 import { GetUserId } from 'src/common/decorators/user.decorator';
 import { Serialize } from 'src/common/decorators/serialize.decorator';
 import { PackageEntity } from './entities/package.entity';
@@ -42,6 +42,13 @@ export class PackagesController {
   getAllByOwner(@GetUserId() ownerId: UUID) {
     return this.packagesService.findAllByUser(ownerId);
   }
+
+  @Get(`by-mission/${SetIdParam('missionId')}`)
+  @Serialize(PackageEntity)
+  getByMission(@Param('missionId') missionId: string) {
+    return this.packagesService.findByMission(missionId);
+  }
+
   @Public()
   @Get(ID_PARAM)
   @Serialize(PackageEntity)
@@ -52,6 +59,7 @@ export class PackagesController {
     }
     return parcel;
   }
+
   @Post()
   @UsePipes(new ValidationPipe())
   create(@GetUserId() ownerId: UUID, @Body() data: CreatePackageDto) {

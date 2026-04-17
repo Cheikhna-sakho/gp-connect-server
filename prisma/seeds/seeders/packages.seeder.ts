@@ -21,7 +21,7 @@ export const seedPackages = async () => {
       const data = await randomAd();
       await packageClient.create({ data });
     }
-    console.log('yes ad');
+    console.log('packages added');
   } catch (error) {
     console.log(error);
   }

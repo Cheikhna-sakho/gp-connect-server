@@ -1,5 +1,5 @@
 import { Role } from '@prisma/client';
 
 export const authorizedRoles = {
-  AdminAndGp: [Role.ADMIN, Role.GP],
+  AdminAndGp: [Role.ADMIN, Role.CARRIER],
 };

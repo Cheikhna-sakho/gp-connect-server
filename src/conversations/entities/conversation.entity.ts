@@ -2,6 +2,7 @@ import { Advertisement, Conversation, User } from '@prisma/client';
 import { Expose, Type } from 'class-transformer';
 import { AdvertisementEntity } from 'src/advertisements/entities/advertisement.entity';
 import { MessageEntity } from 'src/messages/entities/message.entity';
+import { MissionEntity } from 'src/missions/entities/mission.entity';
 import { UserEntity } from 'src/users/entities/user.entity';
 
 export class ConversationEntity implements Conversation {
@@ -24,6 +25,12 @@ export class ConversationEntity implements Conversation {
   @Expose()
   messages?: MessageEntity[];
 
+  // @Type(() => MessageEntity)
+  @Expose()
+  get lastMessage() {
+    return this.messages?.[(this.messages?.length ?? 0) - 1];
+  }
+
   @Type(() => UserEntity)
   @Expose()
   shipper: User;
@@ -33,6 +40,11 @@ export class ConversationEntity implements Conversation {
   @Expose()
   carrier: User;
   carrierId: string;
+
+  @Type(() => MissionEntity)
+  @Expose()
+  mission: MissionEntity;
+  @Expose() missionId: string;
 
   constructor(partial: Partial<ConversationEntity>) {
     Object.assign(this, partial);

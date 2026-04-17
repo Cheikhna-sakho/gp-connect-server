@@ -5,6 +5,6 @@
   },
   "editor.formatOnSave": true,
   "eslint.alwaysShowStatus": true,
-  "files.autoSave": "afterDelay",
+  "files.autoSave": "off",
   "cSpell.words": ["Cloudinary"]
 }

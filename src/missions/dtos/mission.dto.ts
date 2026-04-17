@@ -1,6 +1,14 @@
 import { $Enums, Mission } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
-import { IsDate, IsEmpty, IsEnum, IsNumber, IsUUID } from 'class-validator';
+import {
+  IsArray,
+  IsDate,
+  IsEmpty,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsUUID,
+} from 'class-validator';
 
 export class MissionDto implements Mission {
   @IsEmpty()
@@ -8,9 +16,9 @@ export class MissionDto implements Mission {
   @IsUUID()
   advertisementId: string;
   @IsEmpty()
-  initiatorId: string;
+  shipperId: string;
   @IsUUID()
-  acceptorId: string;
+  carrierId: string;
   @IsNumber()
   negotiatedPrice: Decimal;
   @IsEnum($Enums.MissionStatus)
@@ -19,4 +27,9 @@ export class MissionDto implements Mission {
   createdAt: Date;
   @IsDate()
   updatedAt: Date;
+
+  @IsArray()
+  @IsOptional()
+  @IsUUID(null, { each: true })
+  packageIds?: string[];
 }

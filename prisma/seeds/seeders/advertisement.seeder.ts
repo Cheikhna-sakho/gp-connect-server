@@ -18,7 +18,6 @@ const randomAd = async () => {
     where: { email: usersFixtures[1].email },
     // select: { id: true },
   });
-  console.log({ authorId });
   const [departure, destination] = addressesFixtures;
   const { id: departureId } = await getAddress(departure.zipCode);
   const { id: destinationId } = await getAddress(destination.zipCode);
@@ -38,7 +37,7 @@ export const seedAdvertisements = async () => {
       const data = await randomAd();
       await advertisement.create({ data });
     }
-    console.log('yes ad');
+    console.log('announce added');
   } catch (error) {
     console.log(error);
   }

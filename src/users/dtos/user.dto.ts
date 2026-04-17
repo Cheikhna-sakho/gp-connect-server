@@ -1,45 +1,65 @@
-import { $Enums, Prisma } from '@prisma/client';
+import { $Enums, User } from '@prisma/client';
 import {
+  IsDate,
   IsEmail,
+  IsEmpty,
   IsEnum,
   IsNotEmpty,
   IsOptional,
+  IsPhoneNumber,
+  IsString,
   IsStrongPassword,
-  MinLength,
 } from 'class-validator';
 
-export class CreateUserDto implements Prisma.UserCreateInput {
-  @IsNotEmpty()
+const StrongPasswordConstraint = {
+  minLength: 8,
+  minLowercase: 1,
+  minUppercase: 1,
+  minNumbers: 1,
+  minSymbols: 1,
+} as const;
+export class UserDto implements User {
+  @IsEmpty()
+  id: string;
+
   @IsEmail()
   email: string;
 
-  @IsNotEmpty()
-  @IsStrongPassword({
-    minLength: 8,
-    minLowercase: 1,
-    minUppercase: 1,
-    minNumbers: 1,
-    minSymbols: 1,
-  })
+  @IsPhoneNumber()
+  @IsOptional()
+  phone: string;
+
+  @IsOptional()
+  @IsStrongPassword(StrongPasswordConstraint)
   password: string;
 
   @IsNotEmpty()
+  @IsString()
   firstName: string;
 
   @IsNotEmpty()
+  @IsString()
   lastName: string;
 
   @IsEnum($Enums.Role)
   @IsOptional()
-  role?: $Enums.Role;
-}
-export class UpdateUserDto implements Prisma.UserUpdateInput {
-  name: string;
-  @IsEmail()
-  email: string;
-  @MinLength(8)
-  // @IsStrongPassword()
-  password: string;
-  firstName: string;
-  lastName: string;
+  role: $Enums.Role;
+
+  @IsDate()
+  @IsOptional()
+  emailVerifiedAt: Date;
+
+  @IsDate()
+  @IsOptional()
+  phoneVerifiedAt: Date;
+
+  @IsDate()
+  @IsOptional()
+  idCardVerifiedAt: Date;
+
+  @IsEmpty()
+  createdAt: Date;
+
+  @IsEmpty()
+  updatedAt: Date;
 }

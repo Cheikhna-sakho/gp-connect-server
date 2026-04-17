@@ -1,9 +1,8 @@
 import { $Enums } from '@prisma/client';
 import { prismaClient } from '../configs/prisma-client';
 import { usersFixtures } from '../fixtures';
-import * as bcrypt from 'bcrypt';
 import { plainToInstance } from 'class-transformer';
-import { CreateUserDto } from '../../../src/users/dtos/user.dto';
+import { CreateUserDto } from '../../../src/users/dtos/create-user.dto';
 import { validate } from 'class-validator';
 const { user } = prismaClient;
 export const seedUsers = async () => {
@@ -16,11 +15,13 @@ export const seedUsers = async () => {
         console.error(errors);
         // throw new Error('Validation error. Aborting seed.');
       }
-      const password = await bcrypt.hash(u.password, 10);
-      await user.create({
-        data: {
+      await user.upsert({
+        where: {
+          email: u.email,
+        },
+        update: {},
+        create: {
           ...u,
-          password,
           role: u.role as $Enums.Role,
         },
       });

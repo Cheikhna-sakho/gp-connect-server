@@ -17,7 +17,6 @@ import { Public } from 'src/common/decorators/public.decorator';
 import { ID_PARAM } from 'src/common/constants/route.util.const';
 import { RolesGuard } from 'src/auth/guards/role.guard';
 import { CreateAdvertisementDto } from './dtos/create-advertisements.dto';
-// import { Roles } from 'src/auth/decorators/role.decorator';
 import { GetUserId } from 'src/common/decorators/user.decorator';
 import { CreateAdvertisementWithAddressDto } from './dtos/create-advertisements-with-address.dto';
 import { AdvertisementEntity } from './entities/advertisement.entity';
@@ -51,24 +50,30 @@ export class AdvertisementsController {
   @Serialize(AdvertisementEntity)
   async getMine(
     @GetUserId() authorId: string,
-    @Query() where: AdvertisementQueryFindDto,
+    @Query() { arrivalDate, ...where }: AdvertisementQueryFindDto,
   ) {
-    return this.advertisementsService.findAll({ authorId, ...where });
+    return this.advertisementsService.findAll({
+      authorId,
+      ...where,
+      ...(arrivalDate
+        ? {
+            arrivalDate: { gte: arrivalDate },
+          }
+        : {}),
+    });
   }
   @UseGuards(RolesGuard)
-  @Post('request')
+  @Post('delivery')
   async createRequest(
     @GetUserId() authorId: string,
     @Body() data: CreateAdvertisementDto,
   ) {
     data.authorId = authorId;
-    data.type = 'DeliveryRequest';
+    data.type = 'DELIVERY';
 
     return this.advertisementsService.create(data);
   }
   @Post()
-  // @UseGuards(RolesGuard)
-  // @Roles('ADMIN', 'GP')
   async create(
     @GetUserId() authorId: string,
     @Body() data: CreateAdvertisementWithAddressDto,

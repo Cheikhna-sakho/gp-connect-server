@@ -8,7 +8,15 @@ const createCity = async (data: {
   country: string;
   countryIsoCode: string;
 }) => {
-  return city.create({ data, select: { id: true } });
+  const exist = await city.findFirst({
+    where: { name: data.name, countryIsoCode: data.countryIsoCode },
+  });
+  return city.upsert({
+    where: { id: exist?.id ?? '' },
+    create: data,
+    update: {},
+    select: { id: true },
+  });
 };
 
 export const seedAddresses = async () => {
@@ -20,8 +28,15 @@ export const seedAddresses = async () => {
           country,
           countryIsoCode,
         });
-        await address.create({
-          data: {
+        await address.upsert({
+          where: {
+            latitude_longitude: {
+              latitude: a.latitude,
+              longitude: a.longitude,
+            },
+          },
+          update: {},
+          create: {
             ...a,
             city: {
               connect: { id: cityId },

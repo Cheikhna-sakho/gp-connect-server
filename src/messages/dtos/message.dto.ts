@@ -1,11 +1,11 @@
 import {
   IsString,
-  IsOptional,
   IsUUID,
   IsEnum,
   IsEmpty,
   ValidateIf,
   ValidateNested,
+  IsNotEmpty,
 } from 'class-validator';
 import { Prisma, $Enums } from '@prisma/client';
 import { CreateOfferDto } from './message-offer.dto';
@@ -18,18 +18,16 @@ export class CreateMessageDto
   extends CreateOfferDto
   implements Omit<Prisma.MessageUncheckedCreateInput, 'offer'>
 {
+  @IsForType('TEXT')
   @IsString()
+  @IsNotEmpty()
   content: string;
 
-  @IsOptional()
   @IsUUID()
   conversationId: string;
 
   @IsEnum($Enums.MessageType)
   type?: $Enums.MessageType;
-
-  @IsUUID()
-  advertisementId: string;
 
   @IsEmpty()
   authorId: string;
@@ -38,5 +36,4 @@ export class CreateMessageDto
   @ValidateNested()
   @Type(() => CreateOfferDto)
   offer: CreateOfferDto;
-  // offer?: Prisma.MessageOfferUncheckedCreateInput;
 }

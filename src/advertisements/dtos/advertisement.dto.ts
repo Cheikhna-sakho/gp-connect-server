@@ -15,7 +15,6 @@ export class AdvertisementDto
   implements Prisma.AdvertisementUncheckedCreateInput
 {
   @IsEnum($Enums.AdvertisementType)
-  @IsOptional()
   type?: $Enums.AdvertisementType;
 
   @IsNumber()

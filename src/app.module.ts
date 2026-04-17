@@ -15,9 +15,20 @@ import { MessagesModule } from './messages/messages.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { MediasModule } from './medias/medias.module';
+import { OffersModule } from './offers/offers.module';
+import { ProofModule } from './proof/proof.module';
+import { EmailModule } from './email/email.module';
+import { ConfigModule } from '@nestjs/config';
+import { PhoneModule } from './phone/phone.module';
+import { IdentityModule } from './identity/identity.module';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      isGlobal: true, // Makes ConfigModule available globally
+      // envFilePath: '.env', // Specify the env file path (useful for local dev)
+      // In production, environment variables are typically set directly
+    }),
     DatabaseModule,
     UsersModule,
     AdvertisementsModule,
@@ -29,6 +40,11 @@ import { MediasModule } from './medias/medias.module';
     ConversationsModule,
     CloudinaryModule,
     MediasModule,
+    OffersModule,
+    ProofModule,
+    EmailModule,
+    PhoneModule,
+    IdentityModule,
   ],
   controllers: [AppController],
   providers: [

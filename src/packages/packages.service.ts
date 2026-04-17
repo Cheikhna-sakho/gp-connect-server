@@ -16,20 +16,26 @@ type Delete = { where: Prisma.PackageWhereUniqueInput };
 
 const DEFAULT_INCLUDE = {
   images: { select: { media: true } },
+  mission: true,
 } as const;
 @Injectable()
 export class PackagesService {
   private packages: DatabaseService['package'];
   private packageMedias: DatabaseService['packageMedia'];
+  private mp: DatabaseService['missionPackage'];
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly mediasService: MediasService,
   ) {
     this.packages = this.databaseService.package;
     this.packageMedias = this.databaseService.packageMedia;
+    this.mp = this.databaseService.missionPackage;
   }
   async findBy(where: FindUnique) {
-    return this.packages.findFirst({ where, include: DEFAULT_INCLUDE });
+    return this.packages.findFirst({
+      where,
+      include: { ...DEFAULT_INCLUDE, mission: true },
+    });
   }
   async find({ where }: Find) {
     return this.packages.findMany({ where, include: DEFAULT_INCLUDE });
@@ -46,6 +52,16 @@ export class PackagesService {
       include: DEFAULT_INCLUDE,
     });
   }
+
+  async findByMission(missionId: string) {
+    const a = await this.mp.findMany({ where: { missionId } });
+    console.log({ a });
+    return this.packages.findMany({
+      where: { mission: { some: { missionId } } },
+      include: DEFAULT_INCLUDE,
+    });
+  }
+
   async create(data: CreatePackageDto) {
     const { ownerId, ...rest } = data;
 

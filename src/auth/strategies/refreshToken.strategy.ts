@@ -17,7 +17,7 @@ export class RefreshTokenStrategy extends PassportStrategy(
     });
   }
 
-  async validate({ id, email, role }: JwtPayload): Promise<JwtPayload> {
-    return { id, email, role };
+  async validate({ id }: JwtPayload): Promise<JwtPayload> {
+    return { id };
   }
 }

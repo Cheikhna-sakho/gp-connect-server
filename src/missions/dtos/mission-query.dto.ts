@@ -1,7 +1,4 @@
-import { IsEnum } from 'class-validator';
 import { MissionPartial } from './mission-partial.dto';
+import { OmitType } from '@nestjs/mapped-types';
 
-export class MissionQuery extends MissionPartial {
-  @IsEnum(['initiator', 'acceptor'])
-  userRole?: 'initiator' | 'acceptor';
-}
+export class MissionQuery extends OmitType(MissionPartial, ['packageIds']) {}

@@ -2,14 +2,12 @@
   {
     "firstName": "john",
     "lastName": "doe",
-    "email": "john.doe@test.com",
-    "password": "abcd1234"
+    "email": "john.doe@test.com"
   },
   {
     "firstName": "Jane",
     "lastName": "doe",
-    "role": "GP",
-    "email": "jane.doe@test.com",
-    "password": "abcd1234"
+    "role": "CARRIER",
+    "email": "jane.doe@test.com"
   }
 ]

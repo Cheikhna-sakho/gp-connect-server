@@ -38,6 +38,35 @@ export class UserEntity implements UserI {
   @Expose() get fullName(): string {
     return `${this.firstName} ${this.lastName}`;
   }
+
+  @Expose() phone: string;
+
+  @Expose() emailVerifiedAt: Date;
+
+  @Expose() phoneVerifiedAt: Date;
+
+  @Expose() idCardVerifiedAt: Date;
+
+  @Expose()
+  get trust() {
+    const email = !!this.emailVerifiedAt;
+    const phone = !!this.phoneVerifiedAt;
+    const identity = !!this.idCardVerifiedAt;
+
+    const level = [email, phone, identity].reduce(
+      (count, verified) => count + Number(verified),
+      0,
+    );
+
+    return {
+      level,
+      items: {
+        email: email ? 'verified' : 'unverified',
+        phone: phone ? 'verified' : 'unverified',
+        identity: identity ? 'verified' : 'unverified',
+      },
+    };
+  }
   constructor(partial: Partial<User>) {
     Object.assign(this, partial);
   }

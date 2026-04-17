@@ -1,7 +1,8 @@
-import { $Enums, Prisma } from '@prisma/client';
+import { $Enums, Prisma, User } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Expose, Type } from 'class-transformer';
 import { MissionPackageEntity } from './mission-package.entity';
+import { UserEntity } from 'src/users/entities/user.entity';
 
 export const MISSION_DEFAULT_INCLUDE = {
   packages: { select: { package: true } },
@@ -9,6 +10,7 @@ export const MISSION_DEFAULT_INCLUDE = {
 type Mission = Prisma.MissionGetPayload<{
   include: typeof MISSION_DEFAULT_INCLUDE;
 }>;
+
 export class MissionEntity implements Mission {
   @Expose() id: string;
 
@@ -16,11 +18,13 @@ export class MissionEntity implements Mission {
 
   @Expose() packageId: string;
 
-  @Expose() initiatorId: string;
+  // @Expose() initiatorId: string;
 
-  @Expose() acceptorId: string;
+  // @Expose() acceptorId: string;
 
-  @Expose() negotiatedPrice: Decimal;
+  @Expose()
+  @Type(() => Number)
+  negotiatedPrice: Decimal;
 
   @Expose() status: $Enums.MissionStatus;
 
@@ -49,7 +53,19 @@ export class MissionEntity implements Mission {
   get packagesCount() {
     return this.packages.length;
   }
+
+  @Expose() shipperId: string;
+  @Type(() => UserEntity)
+  @Expose()
+  shipper: User;
+
+  @Expose() carrierId: string;
+  @Type(() => UserEntity)
+  @Expose()
+  carrier: User;
+
   constructor(partial: Partial<MissionEntity>) {
+    console.log({ partial });
     Object.assign(this, partial);
   }
 }
