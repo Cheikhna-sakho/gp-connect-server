@@ -1,32 +1,32 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma, UserIdentityProvider } from '@prisma/client';
+import { UserIdentityProvider, UserIdentityStatus } from '@prisma/client';
 import { DatabaseService } from 'src/database/database.service';
 import Stripe from 'stripe';
 
-type ValueOf<T> = T[keyof T];
-type EventType = Extract<
+type IdentityEventType = Extract<
   Stripe.Event.Type,
   | 'identity.verification_session.verified'
   | 'identity.verification_session.requires_input'
   | 'identity.verification_session.canceled'
 >;
-export const STRIPE_EVENT_TYPE = {
-  'identity.verification_session.verified': 'verified',
-  'identity.verification_session.requires_input': 'requires_input',
-  'identity.verification_session.canceled': 'canceled',
-} satisfies Record<EventType, 'verified' | 'requires_input' | 'canceled'>;
-export const IDENTITY_EVENT_TYPE = {
-  ...STRIPE_EVENT_TYPE,
-  MISSING_USER_METADATA: 'missing_user',
-} as const;
 
-export type StripeEventType = ValueOf<typeof STRIPE_EVENT_TYPE>;
+const HANDLED_EVENTS = new Set<IdentityEventType>([
+  'identity.verification_session.verified',
+  'identity.verification_session.requires_input',
+  'identity.verification_session.canceled',
+]);
 
 @Injectable()
 export class IdentityService {
+  private readonly logger = new Logger(IdentityService.name);
   private stripe: Stripe;
   private userIdentity: DatabaseService['userIdentity'];
+
   constructor(
     private readonly config: ConfigService,
     private readonly databaseService: DatabaseService,
@@ -37,117 +37,117 @@ export class IdentityService {
     this.userIdentity = this.databaseService.userIdentity;
   }
 
+  async getStatus(userId: string) {
+    return this.userIdentity.findUnique({
+      where: {
+        userId_provider: { userId, provider: UserIdentityProvider.STRIPE_IDENTITY },
+      },
+      select: { status: true, reason: true, createdAt: true, updatedAt: true },
+    });
+  }
+
   async createVerificationSession(userId: string) {
-    // tu peux aussi lier le user à un customer Stripe si tu veux
+    const existing = await this.userIdentity.findUnique({
+      where: { userId_provider: { userId, provider: UserIdentityProvider.STRIPE_IDENTITY } },
+      select: { status: true },
+    });
+
+    if (existing?.status === UserIdentityStatus.VERIFIED) {
+      throw new BadRequestException('Identity is already verified');
+    }
+
     const session = await this.stripe.identity.verificationSessions.create({
       type: 'document',
-      metadata: {
-        userId,
-      },
+      metadata: { userId },
       options: {
-        document: {
-          allowed_types: ['id_card', 'passport', 'driving_license'],
-        },
+        document: { allowed_types: ['id_card', 'passport', 'driving_license'] },
       },
-      // si tu veux gérer redirect côté front web
       return_url: this.config.get('STRIPE_IDENTITY_RETURN_URL') || undefined,
     });
 
-    await this.updateVerifyStatus({
-      status: 'PENDING',
+    await this.upsertStatus({
+      status: UserIdentityStatus.PENDING,
       providerId: session.id,
       userId,
     });
 
-    // tu peux renvoyer soit l'URL hébergée, soit client_secret si tu intègres côté front
     return {
       id: session.id,
-      url: (session as any).url ?? null, // session.url si tu utilises l'hébergement Stripe
+      url: session.url ?? null,
       clientSecret: session.client_secret,
     };
   }
 
   async handleWebhook(rawBody: Buffer, signature: string | undefined) {
-    const webhookSecret = this.config.get<string>(
-      'STRIPE_WEBHOOK_SECRET_IDENTITY',
-    );
+    const webhookSecret = this.config.get<string>('STRIPE_WEBHOOK_SECRET_IDENTITY');
+
     if (!webhookSecret) {
-      // this.logger.error('Stripe Identity webhook secret not configured');
-      return;
+      this.logger.error('STRIPE_WEBHOOK_SECRET_IDENTITY is not configured');
+      throw new BadRequestException('Webhook secret not configured');
     }
 
     let event: Stripe.Event;
-
     try {
-      event = this.stripe.webhooks.constructEvent(
-        rawBody,
-        signature!,
-        webhookSecret,
-      );
+      event = this.stripe.webhooks.constructEvent(rawBody, signature!, webhookSecret);
     } catch (err: any) {
-      // this.logger.error(
-      //   'Error verifying Stripe webhook signature',
-      //   err.message,
-      // );
-      throw err;
+      this.logger.error('Webhook signature verification failed', err.message);
+      throw new BadRequestException('Invalid webhook signature');
     }
 
-    if (Object.keys(STRIPE_EVENT_TYPE).includes(event.type)) {
-      const session = event.data.object as Stripe.Identity.VerificationSession;
-      const userId = session.metadata?.userId;
-
-      if (!userId) {
-        // this.logger.warn('Verification session without userId metadata');
-        return;
-      }
-
-      if (event.type === 'identity.verification_session.verified') {
-        await this.updateVerifyStatus({
-          status: 'VERIFIED',
-          providerId: session.id,
-          userId,
-        });
-        await this.databaseService.user.update({
-          where: { id: userId },
-          data: { idCardVerifiedAt: new Date() },
-        });
-      } else if (
-        event.type === 'identity.verification_session.requires_input'
-      ) {
-        await this.updateVerifyStatus({
-          status: 'REJECTED',
-          providerId: session.id,
-          userId,
-          reason: session.last_error?.reason ?? 'requires_input',
-        });
-      } else if (event.type === 'identity.verification_session.canceled') {
-        await this.updateVerifyStatus({
-          status: 'CANCELED',
-          providerId: session.id,
-          userId,
-          reason: session.last_error?.reason ?? 'canceled',
-        });
-      }
+    if (!HANDLED_EVENTS.has(event.type as IdentityEventType)) {
+      return { received: true };
     }
+
+    const session = event.data.object as Stripe.Identity.VerificationSession;
+    const userId = session.metadata?.userId;
+
+    if (!userId) {
+      this.logger.warn(`Verification session ${session.id} has no userId in metadata`);
+      return { received: true };
+    }
+
+    if (event.type === 'identity.verification_session.verified') {
+      await this.upsertStatus({ status: UserIdentityStatus.VERIFIED, providerId: session.id, userId });
+      await this.databaseService.user.update({
+        where: { id: userId },
+        data: { idCardVerifiedAt: new Date() },
+      });
+    } else if (event.type === 'identity.verification_session.requires_input') {
+      await this.upsertStatus({
+        status: UserIdentityStatus.REQUIRES_INPUT,
+        providerId: session.id,
+        userId,
+        reason: session.last_error?.reason ?? 'requires_input',
+      });
+    } else if (event.type === 'identity.verification_session.canceled') {
+      await this.upsertStatus({
+        status: UserIdentityStatus.CANCELED,
+        providerId: session.id,
+        userId,
+        reason: session.last_error?.reason ?? 'canceled',
+      });
+    }
+
     return { received: true };
   }
-  async updateVerifyStatus({
+
+  private async upsertStatus({
     userId,
-    ...data
-  }: Omit<Prisma.UserIdentityUncheckedCreateInput, 'provider'>) {
+    status,
+    providerId,
+    reason,
+  }: {
+    userId: string;
+    status: UserIdentityStatus;
+    providerId: string;
+    reason?: string;
+  }) {
     return this.userIdentity.upsert({
       where: {
-        userId_provider: {
-          userId,
-          provider: UserIdentityProvider.STRIPE_IDENTITY,
-        },
+        userId_provider: { userId, provider: UserIdentityProvider.STRIPE_IDENTITY },
       },
-      create: {
-        userId,
-        ...data,
-        provider: UserIdentityProvider.STRIPE_IDENTITY,
-      },
-      update: data,
+      create: { userId, provider: UserIdentityProvider.STRIPE_IDENTITY, status, providerId, reason },
+      update: { status, providerId, reason },
     });
   }
 }
