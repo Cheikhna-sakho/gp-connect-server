@@ -3,6 +3,7 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { JwtPayload } from '../types/jwt.type';
 import { jwtConstants } from '../constants';
 import { Injectable } from '@nestjs/common';
+import { Request } from 'express';
 
 @Injectable()
 export class RefreshTokenStrategy extends PassportStrategy(
@@ -11,7 +12,7 @@ export class RefreshTokenStrategy extends PassportStrategy(
 ) {
   constructor() {
     super({
-      jwtFromRequest: ExtractJwt.fromBodyField('refreshToken'),
+      jwtFromRequest: (req: Request) => req?.cookies?.rt ?? null,
       algorithms: ['RS256'],
       secretOrKey: jwtConstants.REFRESH_TOKEN_PUBLIC,
     });

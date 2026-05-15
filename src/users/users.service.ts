@@ -52,15 +52,20 @@ export class UsersService {
     return this.users.create({ data });
   }
   async createAvatar(userId: UUID, image: Express.Multer.File) {
-    const avatar = await this.mediasService.createImage(image);
+    const existing = await this.avatar.findUnique({
+      where: { userId },
+      select: { imageId: true },
+    });
+    const newAvatar = await this.mediasService.createImage(image);
     await this.avatar.upsert({
       where: { userId },
-      create: { imageId: avatar.id, userId },
-      update: {
-        imageId: avatar.id,
-      },
+      create: { imageId: newAvatar.id, userId },
+      update: { imageId: newAvatar.id },
     });
-    return avatar;
+    if (existing?.imageId) {
+      await this.mediasService.delete({ id: existing.imageId });
+    }
+    return newAvatar;
   }
   async findBy(where: FindUnique) {
     return this.users.findFirst({ where, include: USER_DEFAULT_INCLUDE });
@@ -89,6 +94,95 @@ export class UsersService {
   async delete(where: Delete) {
     this.users.delete(where);
   }
+
+  // ─── Stats ────────────────────────────────────────────────────────────────
+
+  async getStats(userId: string) {
+    const [
+      missionsAsCarrier,
+      missionsAsShipper,
+      packagesDelivered,
+      totalEarned,
+      ratings,
+    ] = await Promise.all([
+      this.databaseService.mission.count({
+        where: { carrierId: userId, status: 'COMPLETED' },
+      }),
+      this.databaseService.mission.count({
+        where: { shipperId: userId, status: 'COMPLETED' },
+      }),
+      this.databaseService.package.count({
+        where: { status: 'DELIVERED', ownerId: userId },
+      }),
+      this.databaseService.transaction.aggregate({
+        where: { mission: { carrierId: userId }, status: 'COMPLETED' },
+        _sum: { amount: true },
+      }),
+      this.databaseService.missionRating.aggregate({
+        where: { ratedId: userId },
+        _avg: { score: true },
+        _count: { score: true },
+      }),
+    ]);
+
+    return {
+      missionsCompleted: missionsAsCarrier + missionsAsShipper,
+      missionsAsCarrier,
+      missionsAsShipper,
+      packagesDelivered,
+      totalEarned: Number(totalEarned._sum.amount ?? 0),
+      averageRating: ratings._avg.score ? Number(ratings._avg.score.toFixed(1)) : null,
+      ratingsCount: ratings._count.score,
+    };
+  }
+
+  // ─── Preferences ──────────────────────────────────────────────────────────
+
+  async getPreferences(userId: string) {
+    return this.databaseService.userPreferences.upsert({
+      where: { userId },
+      create: { userId },
+      update: {},
+    });
+  }
+
+  async updatePreferences(userId: string, data: Partial<{
+    notifySms: boolean;
+    notifyEmail: boolean;
+    notifyPush: boolean;
+  }>) {
+    return this.databaseService.userPreferences.upsert({
+      where: { userId },
+      create: { userId, ...data },
+      update: data,
+    });
+  }
+
+  // ─── Saved addresses ──────────────────────────────────────────────────────
+
+  getSavedAddresses(userId: string) {
+    return this.databaseService.savedAddress.findMany({
+      where: { userId },
+      include: { address: { include: { city: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async saveAddress(userId: string, addressId: string, label?: string) {
+    const saved = await this.databaseService.savedAddress.upsert({
+      where: { userId_addressId: { userId, addressId } },
+      create: { userId, addressId, label },
+      update: { label },
+      include: { address: { include: { city: true } } },
+    });
+    return saved.address;
+  }
+
+  removeSavedAddress(userId: string, addressId: string) {
+    return this.databaseService.savedAddress.delete({
+      where: { userId_addressId: { userId, addressId } },
+    });
+  }
   async getOptPayload(userId: string, type: VerificationTokenType) {
     const user = await this.users.findUnique({
       where: { id: userId },
@@ -101,7 +195,6 @@ export class UsersService {
     await this.verificationToken.create({
       data: { userId, type, tokenHash, expiresAt },
     });
-    console.log({ expiresAt, tokenHash });
     return { ...user, token };
   }
   async sendEmailVerification(userId: string) {
@@ -167,7 +260,6 @@ export class UsersService {
     });
     if (!record) throw new UnauthorizedException('Token expired.');
     const verified = await bcrypt.compare(token, record.tokenHash);
-    console.log({ verified, now, record });
     if (!verified) throw new UnauthorizedException('Token invalid');
     await this.verificationToken.deleteMany({
       where: { userId: record.userId, type },

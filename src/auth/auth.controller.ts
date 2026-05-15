@@ -7,104 +7,204 @@ import {
   Post,
   Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { RefreshTokenGuard } from './guards/refreshToken.guard';
 import { Public } from 'src/common/decorators/public.decorator';
 import { GetUser } from 'src/common/decorators/user.decorator';
 import { JwtPayload } from './types/jwt.type';
 import { Serialize } from 'src/common/decorators/serialize.decorator';
-import { LoginEntity } from './entities/login.entity';
 import { UserEntity } from 'src/users/entities/user.entity';
-import { RefreshEntity } from './entities/refresh.entity';
 import { GoogleAuthGuard } from './guards/google.guard';
-import { Request } from 'express';
+import { Request, Response } from 'express';
 import { CreateUserDto } from 'src/users/dtos/create-user.dto';
 import { LoginDto } from './dtos/login.dto';
 import { VerificationTokenType } from '@prisma/client';
+import {
+  AppleTokenDto,
+  FacebookTokenDto,
+  GoogleTokenDto,
+} from './dtos/oauth-token.dto';
+
+// Réutilisé sur plusieurs endpoints — déclenche envoi SMS/email
+const AUTH_THROTTLE = { default: { limit: 225, ttl: 60_000 } }; // LIMIT 5
+// Spécifique OTP : correspond à la durée de vie du code (15 min)
+const OTP_THROTTLE = { default: { limit: 5, ttl: 900_000 } };
+
+const IS_PROD = process.env.NODE_ENV === 'production';
+
+const ACCESS_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: IS_PROD,
+  sameSite: 'lax' as const,
+  path: '/',
+  maxAge: 24 * 60 * 60 * 1000, // 1 jour
+};
+
+const REFRESH_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: IS_PROD,
+  sameSite: 'lax' as const,
+  path: '/',
+  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 jours
+};
+
+function setAuthCookies(
+  res: Response,
+  accessToken: string,
+  refreshToken: string,
+) {
+  res.cookie('at', accessToken, ACCESS_COOKIE_OPTIONS);
+  res.cookie('rt', refreshToken, REFRESH_COOKIE_OPTIONS);
+}
+
+function clearAuthCookies(res: Response) {
+  res.clearCookie('at', { path: '/' });
+  res.clearCookie('rt', { path: '/' });
+}
 
 @Public()
 @Controller('auth')
 export class AuthController {
   constructor(readonly authService: AuthService) {}
 
+  // ─── OTP / Email ──────────────────────────────────────────────────────────
+
   @Post('login')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @Throttle(AUTH_THROTTLE)
   login(@Body() data: LoginDto) {
+    console.log({ data });
     return this.authService.login(data);
   }
+
   @Post('register')
   @Serialize(UserEntity)
+  @Throttle({ default: { limit: 3, ttl: 3_600_000 } })
   register(@Body() data: CreateUserDto) {
     return this.authService.register(data);
   }
 
   @Post('otp')
-  @Serialize(LoginEntity)
-  opt(
+  @Serialize(UserEntity)
+  @Throttle(OTP_THROTTLE)
+  async otp(
+    @Res({ passthrough: true }) res: Response,
     @Body()
     {
       code,
       type,
       email,
-    }: {
-      email: string;
-      code: string;
-      type: VerificationTokenType;
-    },
+    }: { email: string; code: string; type: VerificationTokenType },
   ) {
-    return this.authService.loginOpt({ email, code, type });
+    const { user, accessToken, refreshToken } = await this.authService.loginOpt(
+      { email, code, type },
+    );
+    setAuthCookies(res, accessToken, refreshToken);
+    return user;
   }
+
+  @UseGuards(RefreshTokenGuard)
+  @Post('refresh')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async refreshToken(
+    @Res({ passthrough: true }) res: Response,
+    @GetUser() user: JwtPayload,
+  ) {
+    const { accessToken } = await this.authService.refreshToken(user);
+    res.cookie('at', accessToken, ACCESS_COOKIE_OPTIONS);
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  logout(@Res({ passthrough: true }) res: Response) {
+    clearAuthCookies(res);
+  }
+
+  @Get('verify-email')
+  verifyEmail(@Query('token') token: string) {
+    return this.authService.verifyEmail(token);
+  }
+
+  // ─── Google web OAuth (popup / redirect) ─────────────────────────────────
 
   @Get('google')
   @UseGuards(GoogleAuthGuard)
-  async googleAuth() {
-    // Passport fait la redirection automatiquement
-  }
+  googleAuth() {}
 
   @Get('google/callback')
   @UseGuards(GoogleAuthGuard)
-  async googleAuthCallback(@Req() req: Request) {
-    const profile = req.user; // payload renvoyé par GoogleStrategy.validate
-    const { accessToken } = await this.authService.validateOAuthLoginGoogle(
-      profile as {
-        providerUserId: string;
-        email?: string;
-        name?: string;
-      }, //verifier si c'est le bon type retourner
-    );
-
-    // 2 possibilités :
-    // - rediriger vers ton frontend avec le token en query
-    // - ou mettre le token en cookie HTTP-only ici
-
-    // Exemple simple : redirection frontend + token en query
+  async googleAuthCallback(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { user, accessToken } =
+      await this.authService.validateOAuthLoginGoogle(
+        req.user as { providerUserId: string; email?: string; name?: string },
+      );
+    // Le refresh token n'est pas émis pour le flux web Google (session courte)
+    res.cookie('at', accessToken, ACCESS_COOKIE_OPTIONS);
+    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
     return `
       <script>
-        window.opener.postMessage(${JSON.stringify({ accessToken })}, '*');
+        window.opener.postMessage(${JSON.stringify({ user })}, ${JSON.stringify(frontendUrl)});
         window.close();
       </script>
     `;
   }
 
-  @UseGuards(RefreshTokenGuard)
-  @Post('refresh')
-  @Serialize(RefreshEntity)
-  refreshToken(@GetUser() user: JwtPayload) {
-    return this.authService.refreshToken(user);
+  // ─── Google mobile ────────────────────────────────────────────────────────
+
+  @Post('google/token')
+  @Serialize(UserEntity)
+  @Throttle(AUTH_THROTTLE)
+  async googleToken(
+    @Res({ passthrough: true }) res: Response,
+    @Body() { idToken }: GoogleTokenDto,
+  ) {
+    const { user, accessToken, refreshToken } =
+      await this.authService.validateGoogleToken(idToken);
+    setAuthCookies(res, accessToken, refreshToken);
+    return user;
   }
 
-  @Get('verify-email')
-  verifyEmail(@Query('token') token: string) {
-    return this.verifyEmail(token);
+  // ─── Apple Sign In ────────────────────────────────────────────────────────
+
+  @Post('apple')
+  @Serialize(UserEntity)
+  @Throttle(AUTH_THROTTLE)
+  async apple(
+    @Res({ passthrough: true }) res: Response,
+    @Body() { identityToken, firstName, lastName }: AppleTokenDto,
+  ) {
+    const { user, accessToken, refreshToken } =
+      await this.authService.validateAppleToken(
+        identityToken,
+        firstName,
+        lastName,
+      );
+    setAuthCookies(res, accessToken, refreshToken);
+    return user;
+  }
+
+  // ─── Facebook ─────────────────────────────────────────────────────────────
+
+  @Post('facebook')
+  @Serialize(UserEntity)
+  @Throttle(AUTH_THROTTLE)
+  async facebook(
+    @Res({ passthrough: true }) res: Response,
+    @Body() { accessToken }: FacebookTokenDto,
+  ) {
+    const {
+      user,
+      accessToken: at,
+      refreshToken,
+    } = await this.authService.validateFacebookToken(accessToken);
+    setAuthCookies(res, at, refreshToken);
+    return user;
   }
 }
-/**
- * end-point auth
- * prefix: auth
- * /login
- * /register
- * /refresh
- * entit
- */

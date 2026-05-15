@@ -48,6 +48,16 @@ export class UserEntity implements UserI {
   @Expose() idCardVerifiedAt: Date;
 
   @Expose()
+  get profileCompletion(): number {
+    let score = 0;
+    if (this.emailVerifiedAt) score += 25;
+    if (this.phoneVerifiedAt) score += 25;
+    if (this.idCardVerifiedAt) score += 25;
+    if (this.avatar) score += 25;
+    return score;
+  }
+
+  @Expose()
   get trust() {
     const email = !!this.emailVerifiedAt;
     const phone = !!this.phoneVerifiedAt;
