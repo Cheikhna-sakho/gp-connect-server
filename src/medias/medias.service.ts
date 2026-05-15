@@ -1,10 +1,16 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { MediaType, Prisma } from '@prisma/client';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 import { DatabaseService } from 'src/database/database.service';
-// import * as imageSize from 'image-size';
-import * as ffmpeg from 'fluent-ffmpeg';
-import * as fs from 'fs';
+
+type CloudinaryResourceType = 'image' | 'video' | 'raw';
+
+const CLOUDINARY_RESOURCE_TYPE: Record<MediaType, CloudinaryResourceType> = {
+  IMAGE: 'image',
+  AUDIO: 'video',
+  VIDEO: 'video',
+};
+
 @Injectable()
 export class MediasService {
   private medias: DatabaseService['media'];
@@ -14,91 +20,84 @@ export class MediasService {
   ) {
     this.medias = this.databaseService.media;
   }
-  private extractImageMetadata(file: Express.Multer.File) {
-    // const dimensions = imageSize.imageSize(file.buffer);
-    return JSON.stringify(file);
-  }
-  private extractVideoMetadata(file: Express.Multer.File): Promise<any> {
-    return new Promise((resolve, reject) => {
-      ffmpeg.ffprobe(file.path, (err, metadata) => {
-        if (err) reject(err);
-        else {
-          resolve({
-            format: metadata.format.format_name,
-            duration: metadata.format.duration,
-            sizeMB: file.size / (1 * 1000000),
-            resolution: metadata.streams
-              .filter((s) => s.codec_type === 'video')
-              .map((s) => ({
-                width: s.width,
-                height: s.height,
-              }))[0],
-          });
-        }
-      });
-    });
-  }
-  private extractVocalMetadata(file: Express.Multer.File): Promise<any> {
-    return new Promise((resolve, reject) => {
-      ffmpeg.ffprobe(file.path, (err, metadata) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve({
-            format: metadata.format.format_name,
-            duration: metadata.format.duration,
-            sizeMB: file.size / (1 * 1000000),
-            codec: metadata.streams.find((s) => s.codec_type === 'audio')
-              ?.codec_name,
-            sampleRate: metadata.streams.find((s) => s.codec_type === 'audio')
-              ?.sample_rate,
-            channels: metadata.streams.find((s) => s.codec_type === 'audio')
-              ?.channels,
-            bitrate: metadata.format.bit_rate,
-          });
-        }
-      });
+
+  private extractFileMetadata(file: Express.Multer.File) {
+    return JSON.stringify({
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size,
     });
   }
 
-  async createImage(data: Express.Multer.File) {
-    const image = await this.cloudinaryService.uploadFile(data);
-    const metadata = this.extractImageMetadata(data);
+  async createImage(file: Express.Multer.File) {
+    const uploaded = await this.cloudinaryService.uploadFile(file, 'image');
     return this.medias.create({
-      data: { url: image.url, type: 'image', metadata },
+      data: {
+        url: uploaded.secure_url,
+        publicId: uploaded.public_id,
+        type: MediaType.IMAGE,
+        metadata: this.extractFileMetadata(file),
+      },
     });
   }
-  async createManyImages(data: Express.Multer.File[]) {
-    return Promise.all(data.map((image) => this.createImage(image)));
+
+  async createManyImages(files: Express.Multer.File[]) {
+    return Promise.all(files.map((f) => this.createImage(f)));
   }
-  async createVideo(data: Express.Multer.File) {
-    // const video = await this.cloudinaryService.uploadFile(data);
-    const metadata = await this.extractVideoMetadata(data);
-    fs.unlinkSync(data.path);
-    console.log({ metadata });
-    return 'yes';
-    // return this.medias.create({
-    //   data: { url: video.url, type: 'video', metadata },
-    // });
-  }
-  async createManyVideos(data: Express.Multer.File[]) {
-    return Promise.all(data.map((video) => this.createVideo(video)));
-  }
-  async createAudio(data: Express.Multer.File) {
-    const vocal = await this.cloudinaryService.uploadFile(data);
-    const metadata = await this.extractVocalMetadata(data);
-    fs.unlinkSync(data.path);
+
+  async createAudio(file: Express.Multer.File) {
+    const uploaded = await this.cloudinaryService.uploadFile(file, 'video');
     return this.medias.create({
-      data: { url: vocal.url, type: 'audio', metadata },
+      data: {
+        url: uploaded.secure_url,
+        publicId: uploaded.public_id,
+        type: MediaType.AUDIO,
+        metadata: this.extractFileMetadata(file),
+      },
     });
   }
+
+  async createVideo(file: Express.Multer.File) {
+    const uploaded = await this.cloudinaryService.uploadFile(file, 'video');
+    return this.medias.create({
+      data: {
+        url: uploaded.secure_url,
+        publicId: uploaded.public_id,
+        type: MediaType.VIDEO,
+        metadata: this.extractFileMetadata(file),
+      },
+    });
+  }
+
+  async createManyVideos(files: Express.Multer.File[]) {
+    return Promise.all(files.map((f) => this.createVideo(f)));
+  }
+
+  async createByMimetype(file: Express.Multer.File) {
+    if (file.mimetype.startsWith('audio/')) return this.createAudio(file);
+    if (file.mimetype.startsWith('video/')) return this.createVideo(file);
+    return this.createImage(file);
+  }
+
   async find(where: Prisma.MediaWhereInput) {
     return this.medias.findMany({ where });
   }
+
   async findOne(where: Prisma.MediaWhereUniqueInput) {
     return this.medias.findUnique({ where });
   }
+
   async delete(where: Prisma.MediaWhereUniqueInput) {
+    const media = await this.medias.findUnique({
+      where,
+      select: { publicId: true, type: true },
+    });
+    if (media?.publicId) {
+      await this.cloudinaryService.deleteFile(
+        media.publicId,
+        CLOUDINARY_RESOURCE_TYPE[media.type],
+      );
+    }
     return this.medias.delete({ where });
   }
 }
