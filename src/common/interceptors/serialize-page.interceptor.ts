@@ -3,16 +3,18 @@ import { ClassConstructor, plainToInstance } from 'class-transformer';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
-export class SerializeInterceptor<T> implements NestInterceptor {
+export class SerializePageInterceptor<T> implements NestInterceptor {
   constructor(private dto: ClassConstructor<T>) {}
-  intercept(context: ExecutionContext, next: CallHandler): Observable<T> {
+
+  intercept(_ctx: ExecutionContext, next: CallHandler): Observable<unknown> {
     return next.handle().pipe(
-      map((data: T) => {
-        return plainToInstance(this.dto, data, {
+      map(({ data, meta }: { data: unknown[]; meta: unknown }) => ({
+        data: plainToInstance(this.dto, data, {
           excludeExtraneousValues: true,
           exposeUnsetFields: false,
-        });
-      }),
+        }),
+        meta,
+      })),
     );
   }
 }
