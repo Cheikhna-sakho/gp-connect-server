@@ -1,12 +1,12 @@
 import { Module } from '@nestjs/common';
 import { OffersService } from './offers.service';
 import { OffersController } from './offers.controller';
-import { ProofModule } from 'src/proof/proof.module';
+import { DatabaseModule } from 'src/database/database.module';
 
 @Module({
   controllers: [OffersController],
   providers: [OffersService],
-  imports: [ProofModule],
+  imports: [DatabaseModule],
   exports: [OffersService],
 })
 export class OffersModule {}
