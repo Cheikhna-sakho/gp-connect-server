@@ -11,94 +11,114 @@ import { Decimal } from '@prisma/client/runtime/library';
 export class AddressesService {
   private address: DatabaseService['address'];
   private city: DatabaseService['city'];
+
   constructor(private readonly databaseService: DatabaseService) {
     this.address = this.databaseService.address;
     this.city = this.databaseService.city;
   }
-  async findAll(where?: Prisma.AddressWhereInput) {
-    return this.address.findMany({ where, include: { city: true } });
+
+  // ─── Address reads ────────────────────────────────────────────────────────
+
+  async findAll(where?: Prisma.AddressWhereInput, take = 50) {
+    return this.address.findMany({ where, include: { city: true }, take });
   }
+
   async findBy(where: Prisma.AddressWhereUniqueInput) {
-    return this.address.findUnique({
-      where,
-      include: { city: true },
-    });
+    return this.address.findUnique({ where, include: { city: true } });
   }
+
   async findOne({ where }: { where: Prisma.AddressWhereInput }) {
-    return this.address.findFirst({
-      where,
-      include: { city: true },
+    return this.address.findFirst({ where, include: { city: true } });
+  }
+
+  // ─── City reads ───────────────────────────────────────────────────────────
+
+  async findCities(search?: string, country?: string) {
+    return this.city.findMany({
+      where: {
+        ...(search ? { name: { contains: search, mode: 'insensitive' } } : {}),
+        ...(country ? { country: { contains: country, mode: 'insensitive' } } : {}),
+      },
+      take: 20,
+      orderBy: { name: 'asc' },
     });
   }
 
-  async createCityIfNotExist(dto?: CreateCityDto) {
-    const city = await this.city.findFirst({
-      where: dto,
-    });
+  // ─── City upsert (race-condition safe) ───────────────────────────────────
 
-    if (city) return city;
-    return this.city.create({ data: dto });
+  async createCityIfNotExist(dto: CreateCityDto) {
+    return this.city.upsert({
+      where: {
+        name_countryIsoCode: { name: dto.name, countryIsoCode: dto.countryIsoCode },
+      },
+      create: dto,
+      update: {},
+    });
   }
+
+  // ─── Address upsert ───────────────────────────────────────────────────────
 
   async createIfNotExist<T extends Prisma.AddressSelect>(
-    data?: CreateFullAddressDto,
+    data: CreateFullAddressDto,
     returning?: T,
   ) {
     const { country, countryIsoCode, city, ...addressDto } = data;
     const { id: cityId } = await this.createCityIfNotExist({
+      name: city,
       country,
       countryIsoCode,
-      name: city,
     });
+
     const { latitude, longitude, ...rest } = addressDto;
-    let existingAddress = await this.address.findFirst({
+
+    const existing = await this.address.findFirst({
       where: {
         OR: [
           { cityId, ...rest },
-          {
-            latitude: new Decimal(latitude).toDecimalPlaces(6),
-            longitude: new Decimal(longitude).toDecimalPlaces(6),
-          },
+          ...(latitude && longitude
+            ? [{
+                latitude: new Decimal(latitude).toDecimalPlaces(6),
+                longitude: new Decimal(longitude).toDecimalPlaces(6),
+              }]
+            : []),
         ],
       },
       select: returning,
     });
-    if (!existingAddress) {
-      existingAddress = await this.address.create({
+    if (existing) return existing;
+
+    try {
+      return await this.address.create({
         data: { ...addressDto, cityId },
         select: returning,
       });
+    } catch (e) {
+      if (e?.code === 'P2002') {
+        return this.address.findFirst({
+          where: {
+            OR: [
+              { cityId, ...rest },
+              ...(latitude && longitude
+                ? [{
+                    latitude: new Decimal(latitude).toDecimalPlaces(6),
+                    longitude: new Decimal(longitude).toDecimalPlaces(6),
+                  }]
+                : []),
+            ],
+          },
+          select: returning,
+        });
+      }
+      throw e;
     }
-
-    return existingAddress;
   }
 
-  async getCity(data: CreateCityDto) {
-    const select = { id: true };
-    let country = this.city.findFirst({ where: data, select });
-    if (!country) {
-      country = this.city.create({ data, select });
-    }
-    return country;
-  }
-  async getAddressInfo(data: {
-    country: string;
-    countryIsoCode: string;
-    state?: string;
-    city: string;
-  }) {
-    const { country, countryIsoCode, city } = data;
+  // ─── Admin CRUD ───────────────────────────────────────────────────────────
 
-    const { id: cityId } = await this.getCity({
-      name: city,
-      country,
-      countryIsoCode,
-    });
-    return { cityId };
-  }
   async create(data: CreateAddressDto) {
     return this.address.create({ data });
   }
+
   async update({
     where,
     data,
@@ -108,6 +128,7 @@ export class AddressesService {
   }) {
     return this.address.update({ where, data });
   }
+
   async delete(id: UUID) {
     return this.address.delete({ where: { id } });
   }

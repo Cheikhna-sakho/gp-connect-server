@@ -1,5 +1,11 @@
 import { Prisma } from '@prisma/client';
-import { IsString, IsNotEmpty, IsOptional, IsLatitude } from 'class-validator';
+import {
+  IsLatitude,
+  IsLongitude,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 
 export class CreateAddressDto implements Prisma.AddressUncheckedCreateInput {
   @IsString()
@@ -12,13 +18,13 @@ export class CreateAddressDto implements Prisma.AddressUncheckedCreateInput {
 
   @IsString()
   @IsOptional()
-  zipCode: string;
+  zipCode?: string;
 
   @IsLatitude()
   @IsOptional()
-  latitude: number;
+  latitude?: number;
 
-  @IsLatitude()
+  @IsLongitude()
   @IsOptional()
-  longitude: number;
+  longitude?: number;
 }

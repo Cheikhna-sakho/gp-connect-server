@@ -25,11 +25,11 @@ export class AddressEntity implements Address {
   @Expose()
   city: CityEntity;
 
-  @Transform(({ obj }: Transform) => obj.city.country)
+  @Transform(({ obj }: Transform) => obj.city?.country ?? '')
   @Expose()
   country: string;
 
-  @Transform(({ obj }: Transform) => obj.city.countryIsoCode)
+  @Transform(({ obj }: Transform) => obj.city?.countryIsoCode ?? '')
   @Expose()
   countryIsoCode: string;
 
