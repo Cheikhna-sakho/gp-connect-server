@@ -5,7 +5,6 @@ import { DatabaseModule } from 'src/database/database.module';
 import { ConversationsModule } from 'src/conversations/conversations.module';
 import { MediasModule } from 'src/medias/medias.module';
 
-// ThrottlerModule.forRoot([{ ttl: 1000, limit: 3 }])
 @Module({
   imports: [DatabaseModule, ConversationsModule, MediasModule],
   providers: [MessagesService],
