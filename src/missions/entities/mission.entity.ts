@@ -16,12 +16,6 @@ export class MissionEntity implements Mission {
 
   @Expose() advertisementId: string;
 
-  @Expose() packageId: string;
-
-  // @Expose() initiatorId: string;
-
-  // @Expose() acceptorId: string;
-
   @Expose()
   @Type(() => Number)
   negotiatedPrice: Decimal;
@@ -49,9 +43,10 @@ export class MissionEntity implements Mission {
         return total;
       }, 0);
   }
+
   @Expose()
   get packagesCount() {
-    return this.packages.length;
+    return this.packages?.length ?? 0;
   }
 
   @Expose() shipperId: string;
@@ -65,7 +60,6 @@ export class MissionEntity implements Mission {
   carrier: User;
 
   constructor(partial: Partial<MissionEntity>) {
-    console.log({ partial });
     Object.assign(this, partial);
   }
 }

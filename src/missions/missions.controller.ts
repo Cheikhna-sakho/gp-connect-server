@@ -1,9 +1,13 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
-  // NotFoundException,
+  HttpCode,
+  HttpStatus,
+  NotFoundException,
   Param,
   Patch,
   Post,
@@ -18,96 +22,168 @@ import { GetUserId } from 'src/common/decorators/user.decorator';
 import { UUID } from 'crypto';
 import { MissionQuery } from './dtos/mission-query.dto';
 import { ProofService } from 'src/proof/proof.service';
-import { OffersService } from 'src/offers/offers.service';
 import { MissionPackagesDto } from './dtos/mission-packages.dto';
 import { ID_PARAM, SetIdParam } from 'src/common/constants/route.util.const';
 import { MissionPartial } from './dtos/mission-partial.dto';
 import { Serialize } from 'src/common/decorators/serialize.decorator';
+import { SerializePage } from 'src/common/decorators/serialize-page.decorator';
 import { MissionEntity } from './entities/mission.entity';
+import { ProofEntity } from 'src/proof/entities/proof.entity';
+import { ProofOtpEntity } from 'src/proof/entities/proof-otp.entity';
 
 @Controller('missions')
 export class MissionsController {
   constructor(
     private readonly missionsService: MissionsService,
     private readonly proofsService: ProofService,
-    private readonly offersService: OffersService,
   ) {}
+
   @UseGuards(RolesGuard)
   @Roles('ADMIN')
   @Get('/all')
+  @Serialize(MissionEntity)
   getAll() {
     return this.missionsService.findAll();
   }
+
   @Get()
-  @Serialize(MissionEntity)
+  @SerializePage(MissionEntity)
   getOwn(@GetUserId() id: UUID, @Query() where: MissionQuery) {
     return this.missionsService.findByUser(id, where);
   }
 
+  @Get(ID_PARAM)
+  @Serialize(MissionEntity)
+  getOne(@GetUserId() userId: UUID, @Param('id') id: UUID) {
+    return this.missionsService.findOneForUser(id as string, userId as string);
+  }
+
   @Post()
+  @Serialize(MissionEntity)
   create(@GetUserId() shipperId: UUID, @Body() data: CreateMissionDto) {
     return this.missionsService.create({ ...data, shipperId });
   }
 
   @Post(`${ID_PARAM}/packages`)
-  addPackages(
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async addPackages(
+    @GetUserId() userId: UUID,
     @Param('id') missionId: string,
     @Body() { packageIds }: MissionPackagesDto,
   ) {
+    const mission = await this.missionsService.findOne(missionId as UUID);
+    if (!mission) throw new NotFoundException();
+    if (mission.shipperId !== userId) throw new ForbiddenException();
+    if (!['PENDING', 'ACCEPTED'].includes(mission.status)) {
+      throw new BadRequestException('Cannot add packages once the mission is in transit');
+    }
+    const owned = await this.missionsService.verifyPackagesOwnership(packageIds, userId);
+    if (!owned) throw new ForbiddenException('One or more packages do not belong to you');
     return this.missionsService.addPackages(missionId, packageIds);
   }
 
+  // ─── Proof creation (Shipper) ─────────────────────────────────────────────
+
+  @Post(':id/proof/pickup')
+  @Serialize(ProofOtpEntity)
+  async createPickupProof(@GetUserId() userId: UUID, @Param('id') missionId: string) {
+    const mission = await this.missionsService.findOne(missionId as UUID);
+    if (!mission) throw new NotFoundException();
+    if (mission.status !== 'ACCEPTED') {
+      throw new BadRequestException('Mission must be accepted before generating a proof');
+    }
+    if (mission.shipperId !== userId) throw new ForbiddenException();
+    if (!mission.carrierId) throw new BadRequestException('No carrier assigned to this mission yet');
+    return this.proofsService.create({
+      missionId,
+      type: 'PICKUP',
+      createdById: mission.shipperId,
+      verifiedById: mission.carrierId,
+    });
+  }
+
+  @Post(':id/proof/delivery')
+  @Serialize(ProofOtpEntity)
+  async createDeliveryProof(@GetUserId() userId: UUID, @Param('id') missionId: string) {
+    const mission = await this.missionsService.findOne(missionId as UUID);
+    if (!mission) throw new NotFoundException();
+    if (mission.status !== 'ACCEPTED') {
+      throw new BadRequestException('Mission must be accepted before generating a proof');
+    }
+    if (mission.shipperId !== userId) throw new ForbiddenException();
+    if (!mission.carrierId) throw new BadRequestException('No carrier assigned to this mission yet');
+    return this.proofsService.create({
+      missionId,
+      type: 'DELIVERY',
+      createdById: mission.shipperId,
+      verifiedById: mission.carrierId,
+    });
+  }
+
+  // ─── Proof verification (Carrier) ─────────────────────────────────────────
+
   @Post(':id/verify/pickup')
-  verifyPickUp(
+  @Serialize(ProofEntity)
+  async verifyPickUp(
     @GetUserId() verifiedById: UUID,
     @Param('id') missionId: string,
     @Body() { code }: { code: string },
   ) {
-    return this.proofsService.verify({
-      missionId,
-      code,
-      type: 'PICKUP',
-      verifiedById,
-    });
+    const mission = await this.missionsService.findOne(missionId as UUID);
+    if (!mission) throw new NotFoundException();
+    if (mission.status !== 'ACCEPTED') throw new BadRequestException('Mission is not in an active state');
+    if (mission.carrierId !== verifiedById) throw new ForbiddenException();
+    return this.proofsService.verify({ missionId, code, type: 'PICKUP', verifiedById });
   }
 
   @Post(':id/verify/delivery')
-  verifyDelivery(
+  @Serialize(ProofEntity)
+  async verifyDelivery(
     @GetUserId() verifiedById: UUID,
     @Param('id') missionId: string,
     @Body() { code }: { code: string },
   ) {
-    return this.proofsService.verify({
-      missionId,
-      code,
-      type: 'DELIVERY',
-      verifiedById,
-    });
+    const mission = await this.missionsService.findOne(missionId as UUID);
+    if (!mission) throw new NotFoundException();
+    if (mission.status !== 'ACCEPTED') throw new BadRequestException('Mission is not in an active state');
+    if (mission.carrierId !== verifiedById) throw new ForbiddenException();
+    return this.proofsService.verify({ missionId, code, type: 'DELIVERY', verifiedById });
   }
 
-  @Serialize(MissionEntity)
   @Patch(ID_PARAM)
-  async update(@Param('id') id: UUID, @Body() data: MissionPartial) {
+  @Serialize(MissionEntity)
+  async update(
+    @GetUserId() userId: UUID,
+    @Param('id') id: UUID,
+    @Body() data: MissionPartial,
+  ) {
+    const mission = await this.missionsService.findOne(id as UUID);
+    if (!mission) throw new NotFoundException();
+    if (userId !== mission.shipperId && userId !== mission.carrierId) {
+      throw new ForbiddenException();
+    }
+    // Only CANCELLED can be set manually here
+    // ACCEPTED: via offer acceptance | IN_TRANSIT + COMPLETED: via proof system
+    // DISPUTED: via POST /disputes/mission/:id (stores reason + description)
+    const MANUAL_ALLOWED = ['CANCELLED'];
+    if (data.status && !MANUAL_ALLOWED.includes(data.status)) {
+      throw new BadRequestException(
+        `Cannot manually set status to ${data.status}. This happens automatically.`,
+      );
+    }
     return this.missionsService.update(id, data);
   }
 
   @Delete(`${ID_PARAM}/packages/${SetIdParam('packageId')}`)
+  @HttpCode(HttpStatus.NO_CONTENT)
   async deletePackage(
+    @GetUserId() userId: UUID,
     @Param('id') missionId: string,
     @Param('packageId') packageId: string,
   ) {
-    return await this.missionsService.removePackage(missionId, packageId);
+    const mission = await this.missionsService.findOne(missionId as UUID);
+    if (!mission) throw new NotFoundException();
+    if (mission.shipperId !== userId) throw new ForbiddenException();
+    return this.missionsService.removePackage(missionId, packageId);
   }
-  // @Post(':id/accept/offer')
-  // async accept(
-  //   @Param('id') id: UUID,
-  //   @Body() { offerId }: { offerId: string },
-  // ) {
-  //   const mission = await this.missionsService.findOne(id);
-  //   if (!mission) throw new NotFoundException('');
-  //   return this.offersService.accept(offerId, {
-  //     missionId: mission.id,
-  //     ...mission,
-  //   });
-  // }
 }
