@@ -1,6 +1,6 @@
-import { $Enums, Prisma } from '@prisma/client';
+import { $Enums, AdvertisementStatus, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
-import { Expose, plainToInstance, Type } from 'class-transformer';
+import { Expose, plainToInstance, Transform, Type } from 'class-transformer';
 import {
   ADDRESS_DEFAULT_INCLUDE,
   AddressEntity,
@@ -42,6 +42,8 @@ export class AdvertisementEntity implements Advertisement {
   @Expose() id: string;
 
   @Expose() type: $Enums.AdvertisementType;
+
+  @Expose() status: AdvertisementStatus;
 
   @Type(() => Number)
   @Expose()
@@ -90,41 +92,60 @@ export class AdvertisementEntity implements Advertisement {
   destination: AddressEntity;
 
   @Expose()
-  get reference() {
-    return `ADV-${this.id.split('-')[0].toUpperCase()}`;
-  }
-  @Expose()
   @Type(() => MissionEntity)
   missions: MissionEntity[];
   @Expose()
   get cumulatedWeight() {
-    return this.missions.reduce((total, { cumulatedWeight: weight }) => {
-      total += weight;
-      return total;
-    }, 0);
+    return (
+      this.missions?.reduce((total, { cumulatedWeight: weight }) => {
+        total += weight ?? 0;
+        return total;
+      }, 0) ?? 0
+    );
   }
+
   @Expose()
   get packagesCount() {
-    return this.missions.reduce((total, { packagesCount: len }) => {
-      total += len;
-      return total;
-    }, 0);
+    return (
+      this.missions?.reduce((total, { packagesCount: len }) => {
+        total += len ?? 0;
+        return total;
+      }, 0) ?? 0
+    );
   }
-
-  private _conversations: AdvertisementConversation;
 
   @Expose()
-  get offers() {
-    return this._conversations
-      ?.map((c) =>
-        c.messages?.map(({ createdAt, ...m }) => ({
-          ...m.offer,
-          createdAt,
-          author: plainToInstance(UserEntity, m.author),
-        })),
-      )
-      ?.flat();
-  }
+  @Transform(
+    ({
+      obj,
+    }: {
+      obj: Partial<
+        AdvertisementEntity & {
+          conversations?: AdvertisementConversation;
+        }
+      >;
+    }) =>
+      obj.conversations
+        ?.map((c) =>
+          c.messages?.map(({ createdAt, ...m }) => ({
+            ...m.offer,
+            createdAt,
+            author: plainToInstance(UserEntity, m.author),
+          })),
+        )
+        ?.flat(),
+  )
+  offers: {
+    // replace by Entity and use type
+    createdAt: Date;
+    author: UserEntity;
+    id: string;
+    price: Prisma.Decimal;
+    weight: Prisma.Decimal;
+    missionId: string | null;
+    status: $Enums.MessageOfferStatus;
+    updatedAt: Date;
+  }[];
   constructor(
     partial: Partial<
       AdvertisementEntity & {
@@ -133,8 +154,5 @@ export class AdvertisementEntity implements Advertisement {
     >,
   ) {
     Object.assign(this, partial);
-    if (partial?.conversations) {
-      this._conversations = partial.conversations;
-    }
   }
 }

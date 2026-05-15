@@ -6,12 +6,13 @@ import { Type } from 'class-transformer';
 
 export class CreateAdvertisementWithAddressDto extends OmitType(
   CreateAdvertisementDto,
-  ['departureId', 'departureId'],
+  ['departureId', 'destinationId'], // fixed: was ['departureId', 'departureId']
 ) {
   @IsObject()
   @ValidateNested()
   @Type(() => CreateFullAddressDto)
   departure: CreateFullAddressDto;
+
   @IsObject()
   @ValidateNested()
   @Type(() => CreateFullAddressDto)

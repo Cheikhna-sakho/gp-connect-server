@@ -1,5 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import {
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { AdvertisementStatus, Prisma } from '@prisma/client';
 import { DatabaseService } from 'src/database/database.service';
 import { CreateAdvertisementDto } from './dtos/create-advertisements.dto';
 import {
@@ -17,10 +20,9 @@ type Update = {
   data: Prisma.AdvertisementUpdateInput;
   where: Prisma.AdvertisementWhereUniqueInput;
 };
-type UpdateBy = Prisma.AdvertisementUpdateInput;
 type Delete = { where: Prisma.AdvertisementWhereUniqueInput };
+type Pagination = { page?: number; limit?: number };
 
-// const FULL_ADDRESS_INCLUDES_FIELDS = { include: { city: true } };
 @Injectable()
 export class AdvertisementsService {
   private advertisements: DatabaseService['advertisement'];
@@ -28,9 +30,11 @@ export class AdvertisementsService {
   constructor(private readonly databaseService: DatabaseService) {
     this.advertisements = this.databaseService.advertisement;
   }
+
   async find({ where }: Find) {
     return this.advertisements.findFirst({ where });
   }
+
   async findBy(where?: FindUnique) {
     return this.advertisements.findUnique({
       where,
@@ -40,13 +44,48 @@ export class AdvertisementsService {
       },
     });
   }
+
   async findOne({ where, select }: FindOne) {
     return this.advertisements.findFirst({ where, select });
   }
-  async findAll(where?: Prisma.AdvertisementWhereInput) {
-    return this.advertisements.findMany({
-      where,
-      include: ADVERTISEMENT_DEFAULT_INCLUDE,
+
+  async findAll(
+    where?: Prisma.AdvertisementWhereInput,
+    { page = 1, limit = 20 }: Pagination = {},
+    orderBy: Prisma.AdvertisementOrderByWithRelationInput = { createdAt: 'desc' },
+    withOffers = false,
+  ) {
+    const safeLimit = Math.min(limit, 50);
+    const skip = (page - 1) * safeLimit;
+
+    const include = withOffers
+      ? { ...ADVERTISEMENT_DEFAULT_INCLUDE, conversations: ADVERTISEMENT_CONVERSATION_INCLUDE }
+      : ADVERTISEMENT_DEFAULT_INCLUDE;
+
+    const [data, total] = await Promise.all([
+      this.advertisements.findMany({ where, include, orderBy, skip, take: safeLimit }),
+      this.advertisements.count({ where }),
+    ]);
+
+    return { data, meta: { total, page, limit: safeLimit, pages: Math.ceil(total / safeLimit) } };
+  }
+
+  async findOffers(advertisementId: string) {
+    return this.databaseService.messageOffer.findMany({
+      where: {
+        status: 'PENDING',
+        message: { conversation: { advertisementId } },
+      },
+      include: {
+        message: {
+          select: {
+            createdAt: true,
+            authorId: true,
+            author: { select: { id: true, firstName: true, lastName: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
     });
   }
 
@@ -57,27 +96,37 @@ export class AdvertisementsService {
       data: {
         ...data,
         arrivalDate: new Date(data.arrivalDate),
-        departureDate: data.departureDate
-          ? new Date(data.departureDate)
-          : undefined,
+        departureDate: data.departureDate ? new Date(data.departureDate) : undefined,
         author: { connect: { id: authorId } },
-        departure: {
-          connect: { id: departureId },
-        },
-        destination: {
-          connect: { id: destinationId },
-        },
+        departure: { connect: { id: departureId } },
+        destination: { connect: { id: destinationId } },
       },
     });
   }
 
   async update({ data, where }: Update) {
-    return this.advertisements.update({ where, data });
+    try {
+      return await this.advertisements.update({ where, data });
+    } catch (e) {
+      if (e?.code === 'P2025') throw new NotFoundException('Advertisement not found');
+      throw e;
+    }
   }
-  async updateById(id: string, data: UpdateBy) {
+
+  async updateById(id: string, data: Prisma.AdvertisementUpdateInput) {
     return this.advertisements.update({ where: { id }, data });
   }
+
+  async setStatus(id: string, status: AdvertisementStatus) {
+    return this.advertisements.update({ where: { id }, data: { status } });
+  }
+
   async delete(where: Delete) {
-    this.advertisements.delete(where);
+    try {
+      await this.advertisements.delete(where);
+    } catch (e) {
+      if (e?.code === 'P2025') throw new NotFoundException('Advertisement not found');
+      throw e;
+    }
   }
 }
