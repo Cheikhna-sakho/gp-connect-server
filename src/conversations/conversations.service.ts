@@ -1,19 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { UUID } from 'crypto';
-import { AdvertisementsService } from 'src/advertisements/advertisements.service';
 import { DatabaseService } from 'src/database/database.service';
 import { MESSAGE_INCLUDE } from 'src/messages/messages.service';
 import { USER_DEFAULT_INCLUDE } from 'src/users/entities/user.entity';
 import { CreateConversationDto } from './dtos/create-conversation.dto';
+
 @Injectable()
 export class ConversationsService {
   private conversations: DatabaseService['conversation'];
 
-  constructor(
-    private readonly databaseService: DatabaseService,
-    private readonly advertisementsService: AdvertisementsService,
-  ) {
+  constructor(private readonly databaseService: DatabaseService) {
     this.conversations = this.databaseService.conversation;
   }
 
@@ -24,27 +21,77 @@ export class ConversationsService {
         OR: [{ shipperId: userId }, { carrierId: userId }],
       },
       include: {
-        messages: { include: MESSAGE_INCLUDE },
+        messages: {
+          include: MESSAGE_INCLUDE,
+          orderBy: { createdAt: 'asc' },
+        },
         shipper: { include: USER_DEFAULT_INCLUDE },
         carrier: { include: USER_DEFAULT_INCLUDE },
       },
     });
   }
 
-  async findAll(userId: string) {
-    const convs = await this.conversations.findMany({
-      where: { OR: [{ shipperId: userId }, { carrierId: userId }] },
-      include: {
-        shipper: true,
-        carrier: true,
-        messages: { orderBy: { createdAt: 'desc' }, take: 1 },
+  async findAll(userId: string, page = 1, limit = 20) {
+    const safeLimit = Math.min(limit, 50);
+    const skip = (page - 1) * safeLimit;
+    const baseWhere = { OR: [{ shipperId: userId }, { carrierId: userId }] };
+
+    const [data, total] = await Promise.all([
+      this.conversations.findMany({
+        where: baseWhere,
+        include: {
+          shipper: true,
+          carrier: true,
+          messages: {
+            include: { offer: true },
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
+        },
+        orderBy: [
+          { lastMessageAt: { sort: 'desc', nulls: 'last' } },
+          { createdAt: 'desc' },
+        ],
+        skip,
+        take: safeLimit,
+      }),
+      this.conversations.count({ where: baseWhere }),
+    ]);
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit: safeLimit,
+        pages: Math.ceil(total / safeLimit),
+      },
+    };
+  }
+
+  async getAdvertisementForConversation(conversationId: string, userId: string) {
+    const conv = await this.conversations.findFirst({
+      where: { id: conversationId, OR: [{ shipperId: userId }, { carrierId: userId }] },
+      select: {
+        advertisement: {
+          select: { arrivalDate: true, status: true, maxWeight: true, type: true },
+        },
       },
     });
-    return convs.sort((a, b) => {
-      const aDate = a.messages[0]?.createdAt?.getTime() ?? 0;
-      const bDate = b.messages[0]?.createdAt?.getTime() ?? 0;
-      return bDate - aDate;
+    return conv?.advertisement ?? null;
+  }
+
+  async isParticipant(
+    conversationId: string,
+    userId: string,
+  ): Promise<boolean> {
+    const count = await this.conversations.count({
+      where: {
+        id: conversationId,
+        OR: [{ shipperId: userId }, { carrierId: userId }],
+      },
     });
+    return count > 0;
   }
 
   findByAdvertisement(advertisementId: string, userId: string) {
@@ -55,29 +102,29 @@ export class ConversationsService {
       },
     });
   }
+
   create({ packageIds, ...data }: CreateConversationDto) {
+    const missionRelation = data.missionId
+      ? { connect: { id: data.missionId } }
+      : {
+          create: {
+            advertisementId: data.advertisementId,
+            shipperId: data.shipperId,
+            ...(packageIds?.length
+              ? {
+                  packages: {
+                    createMany: {
+                      data: packageIds.map((id) => ({ packageId: id })),
+                    },
+                  },
+                }
+              : {}),
+          },
+        };
     return this.conversations.create({
       data: {
         advertisement: { connect: { id: data.advertisementId } },
-        mission: {
-          connectOrCreate: {
-            where: { id: data?.missionId ?? '' },
-            create: {
-              advertisementId: data.advertisementId,
-              shipperId: data.shipperId,
-              ...(packageIds?.length
-                ? {
-                    packages: {
-                      createMany: {
-                        data: packageIds.map((id) => ({ packageId: id })),
-                      },
-                    },
-                  }
-                : {}),
-              // packages: { connect: { packageId: { in: [] } } },
-            },
-          },
-        },
+        mission: missionRelation,
         shipper: { connect: { id: data.shipperId } },
         carrier: { connect: { id: data.carrierId } },
       },
@@ -93,6 +140,7 @@ export class ConversationsService {
   }) {
     return this.conversations.update({ where, data });
   }
+
   delete(id: UUID) {
     return this.conversations.delete({ where: { id } });
   }

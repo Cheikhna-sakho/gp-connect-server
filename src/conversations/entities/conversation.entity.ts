@@ -1,4 +1,9 @@
-import { Advertisement, Conversation, User } from '@prisma/client';
+import {
+  Advertisement,
+  Conversation,
+  ConversationStatus,
+  User,
+} from '@prisma/client';
 import { Expose, Type } from 'class-transformer';
 import { AdvertisementEntity } from 'src/advertisements/entities/advertisement.entity';
 import { MessageEntity } from 'src/messages/entities/message.entity';
@@ -9,6 +14,10 @@ export class ConversationEntity implements Conversation {
   @Expose() id: string;
 
   @Expose() advertisementId: string;
+
+  @Expose() status: ConversationStatus;
+
+  @Expose() lastMessageAt: Date | null;
 
   @Type(() => Date)
   @Expose()
@@ -25,10 +34,15 @@ export class ConversationEntity implements Conversation {
   @Expose()
   messages?: MessageEntity[];
 
-  // @Type(() => MessageEntity)
+  @Type(() => MessageEntity)
   @Expose()
   get lastMessage() {
-    return this.messages?.[(this.messages?.length ?? 0) - 1];
+    if (!this.messages?.length) return null;
+    // Always return the most recent regardless of array sort order
+    return [...this.messages].sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    )[0];
   }
 
   @Type(() => UserEntity)
@@ -41,10 +55,11 @@ export class ConversationEntity implements Conversation {
   carrier: User;
   carrierId: string;
 
+  missionId: string | null;
+
   @Type(() => MissionEntity)
   @Expose()
   mission: MissionEntity;
-  @Expose() missionId: string;
 
   constructor(partial: Partial<ConversationEntity>) {
     Object.assign(this, partial);
