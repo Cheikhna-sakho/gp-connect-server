@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { AdvertisementStatus, Prisma } from '@prisma/client';
 import { DatabaseService } from 'src/database/database.service';
 import { CreateAdvertisementDto } from './dtos/create-advertisements.dto';
@@ -52,22 +49,61 @@ export class AdvertisementsService {
   async findAll(
     where?: Prisma.AdvertisementWhereInput,
     { page = 1, limit = 20 }: Pagination = {},
-    orderBy: Prisma.AdvertisementOrderByWithRelationInput = { createdAt: 'desc' },
+    orderBy: Prisma.AdvertisementOrderByWithRelationInput = {
+      createdAt: 'desc',
+    },
     withOffers = false,
   ) {
     const safeLimit = Math.min(limit, 50);
     const skip = (page - 1) * safeLimit;
 
     const include = withOffers
-      ? { ...ADVERTISEMENT_DEFAULT_INCLUDE, conversations: ADVERTISEMENT_CONVERSATION_INCLUDE }
+      ? {
+          ...ADVERTISEMENT_DEFAULT_INCLUDE,
+          conversations: ADVERTISEMENT_CONVERSATION_INCLUDE,
+        }
       : ADVERTISEMENT_DEFAULT_INCLUDE;
 
     const [data, total] = await Promise.all([
-      this.advertisements.findMany({ where, include, orderBy, skip, take: safeLimit }),
+      this.advertisements.findMany({
+        where,
+        include,
+        orderBy,
+        skip,
+        take: safeLimit,
+      }),
       this.advertisements.count({ where }),
     ]);
 
-    return { data, meta: { total, page, limit: safeLimit, pages: Math.ceil(total / safeLimit) } };
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit: safeLimit,
+        pages: Math.ceil(total / safeLimit),
+      },
+    };
+  }
+
+  async findNearbyIds(
+    lat: number,
+    lng: number,
+    radiusKm: number,
+  ): Promise<string[]> {
+    const radiusMeters = radiusKm * 1000;
+    const rows = await this.databaseService.$queryRaw<{ id: string }[]>`
+      SELECT ad.id
+      FROM advertisements ad
+      JOIN addresses a ON a.id = ad.departure_id
+      WHERE a.location IS NOT NULL
+        AND ST_DWithin(
+          a.location,
+          ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography,
+          ${radiusMeters}
+        )
+    `;
+    return rows.map((r) => r.id);
   }
 
   async findOffers(advertisementId: string) {
@@ -96,7 +132,9 @@ export class AdvertisementsService {
       data: {
         ...data,
         arrivalDate: new Date(data.arrivalDate),
-        departureDate: data.departureDate ? new Date(data.departureDate) : undefined,
+        departureDate: data.departureDate
+          ? new Date(data.departureDate)
+          : undefined,
         author: { connect: { id: authorId } },
         departure: { connect: { id: departureId } },
         destination: { connect: { id: destinationId } },
@@ -108,7 +146,8 @@ export class AdvertisementsService {
     try {
       return await this.advertisements.update({ where, data });
     } catch (e) {
-      if (e?.code === 'P2025') throw new NotFoundException('Advertisement not found');
+      if (e?.code === 'P2025')
+        throw new NotFoundException('Advertisement not found');
       throw e;
     }
   }
@@ -125,7 +164,8 @@ export class AdvertisementsService {
     try {
       await this.advertisements.delete(where);
     } catch (e) {
-      if (e?.code === 'P2025') throw new NotFoundException('Advertisement not found');
+      if (e?.code === 'P2025')
+        throw new NotFoundException('Advertisement not found');
       throw e;
     }
   }

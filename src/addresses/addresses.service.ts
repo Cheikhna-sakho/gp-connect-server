@@ -37,7 +37,9 @@ export class AddressesService {
     return this.city.findMany({
       where: {
         ...(search ? { name: { contains: search, mode: 'insensitive' } } : {}),
-        ...(country ? { country: { contains: country, mode: 'insensitive' } } : {}),
+        ...(country
+          ? { country: { contains: country, mode: 'insensitive' } }
+          : {}),
       },
       take: 20,
       orderBy: { name: 'asc' },
@@ -49,7 +51,10 @@ export class AddressesService {
   async createCityIfNotExist(dto: CreateCityDto) {
     return this.city.upsert({
       where: {
-        name_countryIsoCode: { name: dto.name, countryIsoCode: dto.countryIsoCode },
+        name_countryIsoCode: {
+          name: dto.name,
+          countryIsoCode: dto.countryIsoCode,
+        },
       },
       create: dto,
       update: {},
@@ -76,10 +81,12 @@ export class AddressesService {
         OR: [
           { cityId, ...rest },
           ...(latitude && longitude
-            ? [{
-                latitude: new Decimal(latitude).toDecimalPlaces(6),
-                longitude: new Decimal(longitude).toDecimalPlaces(6),
-              }]
+            ? [
+                {
+                  latitude: new Decimal(latitude).toDecimalPlaces(6),
+                  longitude: new Decimal(longitude).toDecimalPlaces(6),
+                },
+              ]
             : []),
         ],
       },
@@ -88,10 +95,18 @@ export class AddressesService {
     if (existing) return existing;
 
     try {
-      return await this.address.create({
+      const created = await this.address.create({
         data: { ...addressDto, cityId },
-        select: returning,
+        select: returning ?? ({ id: true } as T),
       });
+      if (latitude && longitude) {
+        await this.databaseService.$executeRaw`
+          UPDATE addresses
+          SET location = ST_SetSRID(ST_MakePoint(${Number(longitude)}, ${Number(latitude)}), 4326)::geography
+          WHERE id = ${(created as { id: string }).id}
+        `;
+      }
+      return created as Prisma.AddressGetPayload<{ select: T }>;
     } catch (e) {
       if (e?.code === 'P2002') {
         return this.address.findFirst({
@@ -99,10 +114,12 @@ export class AddressesService {
             OR: [
               { cityId, ...rest },
               ...(latitude && longitude
-                ? [{
-                    latitude: new Decimal(latitude).toDecimalPlaces(6),
-                    longitude: new Decimal(longitude).toDecimalPlaces(6),
-                  }]
+                ? [
+                    {
+                      latitude: new Decimal(latitude).toDecimalPlaces(6),
+                      longitude: new Decimal(longitude).toDecimalPlaces(6),
+                    },
+                  ]
                 : []),
             ],
           },

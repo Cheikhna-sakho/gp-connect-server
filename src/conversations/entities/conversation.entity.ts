@@ -28,6 +28,7 @@ export class ConversationEntity implements Conversation {
   createdAt: Date;
 
   @Type(() => AdvertisementEntity)
+  @Expose()
   advertisement?: Advertisement;
 
   @Type(() => MessageEntity)

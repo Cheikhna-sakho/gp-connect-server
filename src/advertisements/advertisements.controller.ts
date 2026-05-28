@@ -37,30 +37,78 @@ export class AdvertisementsController {
   @Public()
   @Get()
   @SerializePage(AdvertisementEntity)
-  getAll(
+  async getAll(
     @Query()
     {
-      page, limit, maxWeight,
-      departureCityName, destinationCityName,
-      sortBy, order,
+      page,
+      limit,
+      maxWeight,
+      price,
+      arrivalDate,
+      departureCityName,
+      destinationCityName,
+      lat,
+      lng,
+      radius,
+      sortBy,
+      order,
       ...where
     }: AdvertisementQueryFindDto,
   ) {
-    const prismaWhere = {
+    const prismaWhere: Record<string, any> = {
       ...where,
-      // status is not in AdvertisementQueryFindDto (whitelist strips it)
-      // but we force OPEN to never expose CLOSED/COMPLETED in public browse
       status: 'OPEN' as const,
-      maxWeight: maxWeight ? { lte: maxWeight } : undefined,
+      // "Prix max" → annonces dont le prix est ≤ à la valeur saisie
+      ...(price ? { price: { lte: price } } : {}),
+      // "Poids min dispo" → annonces dont la capacité est ≥ à la valeur saisie
+      ...(maxWeight ? { maxWeight: { gte: maxWeight } } : {}),
+      // Filtrer les annonces dont la date d'arrivée est >= date saisie
+      ...(arrivalDate ? { arrivalDate: { gte: arrivalDate } } : {}),
       ...(departureCityName
-        ? { departure: { city: { name: { contains: departureCityName, mode: 'insensitive' as const } } } }
+        ? {
+            departure: {
+              city: {
+                name: {
+                  contains: departureCityName,
+                  mode: 'insensitive' as const,
+                },
+              },
+            },
+          }
         : {}),
       ...(destinationCityName
-        ? { destination: { city: { name: { contains: destinationCityName, mode: 'insensitive' as const } } } }
+        ? {
+            destination: {
+              city: {
+                name: {
+                  contains: destinationCityName,
+                  mode: 'insensitive' as const,
+                },
+              },
+            },
+          }
         : {}),
     };
-    const orderBy = sortBy ? { [sortBy]: order ?? 'asc' } : { createdAt: 'desc' as const };
-    return this.advertisementsService.findAll(prismaWhere, { page, limit }, orderBy);
+
+    // Filtre géospatial PostGIS : restreindre aux annonces dont la ville de départ
+    // est dans le rayon défini (défaut 100 km)
+    if (lat !== undefined && lng !== undefined) {
+      const nearbyIds = await this.advertisementsService.findNearbyIds(
+        lat,
+        lng,
+        radius ?? 100,
+      );
+      prismaWhere.id = { in: nearbyIds };
+    }
+
+    const orderBy = sortBy
+      ? { [sortBy]: order ?? 'asc' }
+      : { createdAt: 'desc' as const };
+    return this.advertisementsService.findAll(
+      prismaWhere,
+      { page, limit },
+      orderBy,
+    );
   }
 
   @Public()
@@ -81,9 +129,13 @@ export class AdvertisementsController {
     @GetUserId() authorId: string,
     @Query()
     {
-      page, limit, arrivalDate,
-      departureCityName, destinationCityName,
-      sortBy, order,
+      page,
+      limit,
+      arrivalDate,
+      departureCityName,
+      destinationCityName,
+      sortBy,
+      order,
       ...where
     }: AdvertisementQueryFindDto,
   ) {
@@ -92,14 +144,39 @@ export class AdvertisementsController {
       ...where,
       ...(arrivalDate ? { arrivalDate: { gte: arrivalDate } } : {}),
       ...(departureCityName
-        ? { departure: { city: { name: { contains: departureCityName, mode: 'insensitive' as const } } } }
+        ? {
+            departure: {
+              city: {
+                name: {
+                  contains: departureCityName,
+                  mode: 'insensitive' as const,
+                },
+              },
+            },
+          }
         : {}),
       ...(destinationCityName
-        ? { destination: { city: { name: { contains: destinationCityName, mode: 'insensitive' as const } } } }
+        ? {
+            destination: {
+              city: {
+                name: {
+                  contains: destinationCityName,
+                  mode: 'insensitive' as const,
+                },
+              },
+            },
+          }
         : {}),
     };
-    const orderBy = sortBy ? { [sortBy]: order ?? 'asc' } : { arrivalDate: 'asc' as const };
-    return this.advertisementsService.findAll(prismaWhere, { page, limit }, orderBy, true);
+    const orderBy = sortBy
+      ? { [sortBy]: order ?? 'asc' }
+      : { arrivalDate: 'asc' as const };
+    return this.advertisementsService.findAll(
+      prismaWhere,
+      { page, limit },
+      orderBy,
+      true,
+    );
   }
 
   @UseGuards(RolesGuard)
@@ -134,7 +211,11 @@ export class AdvertisementsController {
       { ...departure },
       { id: true },
     );
-    return this.advertisementsService.create({ ...dto, destinationId, departureId });
+    return this.advertisementsService.create({
+      ...dto,
+      destinationId,
+      departureId,
+    });
   }
 
   @Patch(ID_PARAM)

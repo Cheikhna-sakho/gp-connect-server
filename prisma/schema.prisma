@@ -201,6 +201,7 @@ model Address {
   cityId    String   @map("city_id")
   latitude  Decimal? @db.Decimal(8, 6)
   longitude Decimal? @db.Decimal(9, 6)
+  location  Unsupported("geography(Point, 4326)")?
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

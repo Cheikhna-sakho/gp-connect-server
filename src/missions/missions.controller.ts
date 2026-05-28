@@ -75,10 +75,16 @@ export class MissionsController {
     if (!mission) throw new NotFoundException();
     if (mission.shipperId !== userId) throw new ForbiddenException();
     if (!['PENDING', 'ACCEPTED'].includes(mission.status)) {
-      throw new BadRequestException('Cannot add packages once the mission is in transit');
+      throw new BadRequestException(
+        'Cannot add packages once the mission is in transit',
+      );
     }
-    const owned = await this.missionsService.verifyPackagesOwnership(packageIds, userId);
-    if (!owned) throw new ForbiddenException('One or more packages do not belong to you');
+    const owned = await this.missionsService.verifyPackagesOwnership(
+      packageIds,
+      userId,
+    );
+    if (!owned)
+      throw new ForbiddenException('One or more packages do not belong to you');
     return this.missionsService.addPackages(missionId, packageIds);
   }
 
@@ -86,14 +92,20 @@ export class MissionsController {
 
   @Post(':id/proof/pickup')
   @Serialize(ProofOtpEntity)
-  async createPickupProof(@GetUserId() userId: UUID, @Param('id') missionId: string) {
+  async createPickupProof(
+    @GetUserId() userId: UUID,
+    @Param('id') missionId: string,
+  ) {
     const mission = await this.missionsService.findOne(missionId as UUID);
     if (!mission) throw new NotFoundException();
     if (mission.status !== 'ACCEPTED') {
-      throw new BadRequestException('Mission must be accepted before generating a proof');
+      throw new BadRequestException(
+        'Mission must be accepted before generating a proof',
+      );
     }
     if (mission.shipperId !== userId) throw new ForbiddenException();
-    if (!mission.carrierId) throw new BadRequestException('No carrier assigned to this mission yet');
+    if (!mission.carrierId)
+      throw new BadRequestException('No carrier assigned to this mission yet');
     return this.proofsService.create({
       missionId,
       type: 'PICKUP',
@@ -104,14 +116,20 @@ export class MissionsController {
 
   @Post(':id/proof/delivery')
   @Serialize(ProofOtpEntity)
-  async createDeliveryProof(@GetUserId() userId: UUID, @Param('id') missionId: string) {
+  async createDeliveryProof(
+    @GetUserId() userId: UUID,
+    @Param('id') missionId: string,
+  ) {
     const mission = await this.missionsService.findOne(missionId as UUID);
     if (!mission) throw new NotFoundException();
     if (mission.status !== 'ACCEPTED') {
-      throw new BadRequestException('Mission must be accepted before generating a proof');
+      throw new BadRequestException(
+        'Mission must be accepted before generating a proof',
+      );
     }
     if (mission.shipperId !== userId) throw new ForbiddenException();
-    if (!mission.carrierId) throw new BadRequestException('No carrier assigned to this mission yet');
+    if (!mission.carrierId)
+      throw new BadRequestException('No carrier assigned to this mission yet');
     return this.proofsService.create({
       missionId,
       type: 'DELIVERY',
@@ -131,9 +149,15 @@ export class MissionsController {
   ) {
     const mission = await this.missionsService.findOne(missionId as UUID);
     if (!mission) throw new NotFoundException();
-    if (mission.status !== 'ACCEPTED') throw new BadRequestException('Mission is not in an active state');
+    if (mission.status !== 'ACCEPTED')
+      throw new BadRequestException('Mission is not in an active state');
     if (mission.carrierId !== verifiedById) throw new ForbiddenException();
-    return this.proofsService.verify({ missionId, code, type: 'PICKUP', verifiedById });
+    return this.proofsService.verify({
+      missionId,
+      code,
+      type: 'PICKUP',
+      verifiedById,
+    });
   }
 
   @Post(':id/verify/delivery')
@@ -145,9 +169,15 @@ export class MissionsController {
   ) {
     const mission = await this.missionsService.findOne(missionId as UUID);
     if (!mission) throw new NotFoundException();
-    if (mission.status !== 'ACCEPTED') throw new BadRequestException('Mission is not in an active state');
+    if (mission.status !== 'ACCEPTED')
+      throw new BadRequestException('Mission is not in an active state');
     if (mission.carrierId !== verifiedById) throw new ForbiddenException();
-    return this.proofsService.verify({ missionId, code, type: 'DELIVERY', verifiedById });
+    return this.proofsService.verify({
+      missionId,
+      code,
+      type: 'DELIVERY',
+      verifiedById,
+    });
   }
 
   @Patch(ID_PARAM)
@@ -172,6 +202,20 @@ export class MissionsController {
       );
     }
     return this.missionsService.update(id, data);
+  }
+
+  @Delete(ID_PARAM)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async delete(@GetUserId() userId: UUID, @Param('id') id: UUID) {
+    const mission = await this.missionsService.findOne(id as UUID);
+    if (!mission) throw new NotFoundException();
+    if (mission.shipperId !== userId) throw new ForbiddenException();
+    if (!['PENDING', 'CANCELLED'].includes(mission.status)) {
+      throw new BadRequestException(
+        'Only PENDING or CANCELLED missions can be deleted',
+      );
+    }
+    return this.missionsService.delete(id as UUID);
   }
 
   @Delete(`${ID_PARAM}/packages/${SetIdParam('packageId')}`)
