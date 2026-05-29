@@ -1,11 +1,24 @@
-import { $Enums, MissionProof, Prisma, User } from '@prisma/client';
+import {
+  $Enums,
+  MissionProof,
+  Prisma,
+  Transaction,
+  User,
+} from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Expose, Transform, Type } from 'class-transformer';
 import { MissionPackageEntity } from './mission-package.entity';
 import { UserEntity } from 'src/users/entities/user.entity';
 
+// Used for list endpoints — lightweight (no proof images, no transaction)
 export const MISSION_DEFAULT_INCLUDE = {
   packages: { select: { package: true } },
+} as const;
+
+// Used for detail endpoint — full data
+export const MISSION_DETAIL_INCLUDE = {
+  packages: { select: { package: true } },
+  transaction: true,
   proofs: {
     include: {
       images: {
@@ -16,7 +29,7 @@ export const MISSION_DEFAULT_INCLUDE = {
   },
 } as const;
 type Mission = Prisma.MissionGetPayload<{
-  include: typeof MISSION_DEFAULT_INCLUDE;
+  include: typeof MISSION_DETAIL_INCLUDE;
 }>;
 
 export class MissionEntity implements Mission {
@@ -82,7 +95,11 @@ export class MissionEntity implements Mission {
       }, {});
     },
   )
-  proofs: MissionProof[];
+  proofs: any[];
+
+  // Transaction — only present on detail view
+  @Expose()
+  transaction: Transaction | null;
 
   constructor(partial: Partial<MissionEntity>) {
     Object.assign(this, partial);

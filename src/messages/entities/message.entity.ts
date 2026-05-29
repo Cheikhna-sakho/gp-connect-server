@@ -1,6 +1,8 @@
-import { $Enums, Message, MessageOffer } from '@prisma/client';
-import { Expose, Type } from 'class-transformer';
+import { $Enums, Message, MessageOffer, Prisma } from '@prisma/client';
+import { Expose, Transform, Type } from 'class-transformer';
 import { MessageOfferEntity } from './message-offer.entity';
+
+type MessageMedia = Prisma.MessageMediaGetPayload<{ include: { media: true } }>;
 
 export class MessageEntity implements Message {
   @Expose() id: string;
@@ -27,6 +29,14 @@ export class MessageEntity implements Message {
   @Expose()
   @Type(() => MessageOfferEntity)
   offer: MessageOffer;
+
+  // Transforme medias[] → tableau d'URLs pour les messages MEDIA
+  @Expose()
+  @Transform(
+    ({ value }: { value?: MessageMedia[] }) =>
+      value?.map((m) => m.media.url) ?? [],
+  )
+  medias: MessageMedia[];
 
   constructor(partial: Partial<MessageEntity>) {
     Object.assign(this, partial);

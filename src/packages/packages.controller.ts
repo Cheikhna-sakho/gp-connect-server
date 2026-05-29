@@ -34,7 +34,10 @@ const imageFileFilter = (
   cb: (error: Error | null, acceptFile: boolean) => void,
 ) => {
   if (!IMAGE_MIME_TYPES.includes(file.mimetype)) {
-    return cb(new BadRequestException(`File type not allowed: ${file.mimetype}`), false);
+    return cb(
+      new BadRequestException(`File type not allowed: ${file.mimetype}`),
+      false,
+    );
   }
   cb(null, true);
 };
@@ -74,12 +77,16 @@ export class PackagesController {
     return pkg;
   }
 
+  @UseGuards(RolesGuard)
+  @Roles('SHIPPER')
   @Post()
   create(@GetUserId() ownerId: UUID, @Body() data: CreatePackageDto) {
     data.ownerId = ownerId;
     return this.packagesService.create(data);
   }
 
+  @UseGuards(RolesGuard)
+  @Roles('SHIPPER')
   @UseInterceptors(
     FilesInterceptor('images', 10, {
       storage: memoryStorage(),

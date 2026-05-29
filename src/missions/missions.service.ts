@@ -1,11 +1,19 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { AdvertisementStatus, Mission, MissionStatus, Prisma } from '@prisma/client';
+import {
+  AdvertisementStatus,
+  Mission,
+  MissionStatus,
+  Prisma,
+} from '@prisma/client';
 import { UUID } from 'crypto';
 import { DatabaseService } from 'src/database/database.service';
 import { CreateMissionDto } from './dtos/create-mission.dto';
 import { MissionQuery } from './dtos/mission-query.dto';
-import { MISSION_DEFAULT_INCLUDE } from './entities/mission.entity';
+import {
+  MISSION_DEFAULT_INCLUDE,
+  MISSION_DETAIL_INCLUDE,
+} from './entities/mission.entity';
 import { USER_DEFAULT_INCLUDE } from 'src/users/entities/user.entity';
 import { MissionPartial } from './dtos/mission-partial.dto';
 const getSelectFields = <T extends string>(fields: T[]) => {
@@ -51,7 +59,10 @@ export class MissionsService {
 
     const baseWhere = {
       AND: [
-        { OR: [{ shipperId: userId }, { carrierId: userId }], status: { not: 'PENDING' as const } },
+        {
+          OR: [{ shipperId: userId }, { carrierId: userId }],
+          status: { not: 'PENDING' as const },
+        },
         where,
       ],
     };
@@ -69,7 +80,12 @@ export class MissionsService {
 
     return {
       data,
-      meta: { total, page: page ?? 1, limit: safeLimit, pages: Math.ceil(total / safeLimit) },
+      meta: {
+        total,
+        page: page ?? 1,
+        limit: safeLimit,
+        pages: Math.ceil(total / safeLimit),
+      },
     };
   }
   async findOne(id: UUID) {
@@ -80,7 +96,7 @@ export class MissionsService {
     return this.missions.findFirst({
       where: { id, OR: [{ shipperId: userId }, { carrierId: userId }] },
       include: {
-        ...MISSION_DEFAULT_INCLUDE,
+        ...MISSION_DETAIL_INCLUDE,
         shipper: { include: USER_DEFAULT_INCLUDE },
         carrier: { include: USER_DEFAULT_INCLUDE },
       },
@@ -129,18 +145,25 @@ export class MissionsService {
 
   async update(id: UUID, data: MissionPartial) {
     if (data.status) {
-      await this.validateStatusTransition(id as string, data.status as MissionStatus);
+      await this.validateStatusTransition(
+        id as string,
+        data.status as MissionStatus,
+      );
     }
 
     const mission = await this.missions.update({ where: { id }, data });
 
     if (data.status) {
       const adStatus: AdvertisementStatus | null =
-        data.status === 'ACCEPTED' ? AdvertisementStatus.IN_PROGRESS
-        : data.status === 'IN_TRANSIT' ? AdvertisementStatus.IN_PROGRESS
-        : data.status === 'COMPLETED' ? AdvertisementStatus.COMPLETED
-        : data.status === 'CANCELLED' ? AdvertisementStatus.OPEN
-        : null;
+        data.status === 'ACCEPTED'
+          ? AdvertisementStatus.IN_PROGRESS
+          : data.status === 'IN_TRANSIT'
+            ? AdvertisementStatus.IN_PROGRESS
+            : data.status === 'COMPLETED'
+              ? AdvertisementStatus.COMPLETED
+              : data.status === 'CANCELLED'
+                ? AdvertisementStatus.OPEN
+                : null;
 
       if (adStatus) {
         await this.databaseService.advertisement.update({
@@ -187,13 +210,13 @@ export class MissionsService {
     if (!mission) return;
 
     const allowed: Record<MissionStatus, MissionStatus[]> = {
-      PENDING:    ['ACCEPTED', 'CANCELLED'],
-      ACCEPTED:   ['IN_TRANSIT', 'CANCELLED', 'DISPUTED'],
+      PENDING: ['ACCEPTED', 'CANCELLED'],
+      ACCEPTED: ['IN_TRANSIT', 'CANCELLED', 'DISPUTED'],
       // No CANCELLED from IN_TRANSIT — carrier has the package, must dispute first
       IN_TRANSIT: ['COMPLETED', 'DISPUTED'],
-      COMPLETED:  [],
-      CANCELLED:  [],
-      DISPUTED:   ['CANCELLED', 'COMPLETED'],
+      COMPLETED: [],
+      CANCELLED: [],
+      DISPUTED: ['CANCELLED', 'COMPLETED'],
     };
 
     if (!allowed[mission.status].includes(next)) {
@@ -202,7 +225,10 @@ export class MissionsService {
       );
     }
   }
-  async verifyPackagesOwnership(packageIds: string[], ownerId: string): Promise<boolean> {
+  async verifyPackagesOwnership(
+    packageIds: string[],
+    ownerId: string,
+  ): Promise<boolean> {
     const count = await this.databaseService.package.count({
       where: { id: { in: packageIds }, ownerId },
     });

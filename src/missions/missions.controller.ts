@@ -62,6 +62,8 @@ export class MissionsController {
     return this.missionsService.findOneForUser(id as string, userId as string);
   }
 
+  @UseGuards(RolesGuard)
+  @Roles('SHIPPER')
   @Post()
   @Serialize(MissionEntity)
   create(@GetUserId() shipperId: UUID, @Body() data: CreateMissionDto) {
@@ -279,6 +281,12 @@ export class MissionsController {
     if (data.status && !MANUAL_ALLOWED.includes(data.status)) {
       throw new BadRequestException(
         `Cannot manually set status to ${data.status}. This happens automatically.`,
+      );
+    }
+    // carrierId is set exclusively via offer acceptance — never manually
+    if ('carrierId' in data) {
+      throw new BadRequestException(
+        'carrierId cannot be set manually. It is assigned via offer acceptance.',
       );
     }
     return this.missionsService.update(id, data);

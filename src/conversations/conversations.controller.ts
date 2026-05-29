@@ -66,6 +66,10 @@ export class ConversationsController {
     });
     if (!advertisement) throw new NotFoundException();
     const { authorId, type } = advertisement;
+    if (authorId === userId)
+      throw new ForbiddenException(
+        'Cannot start a conversation on your own advertisement',
+      );
     const payload =
       type === 'DELIVERY'
         ? { shipperId: userId, carrierId: authorId }
