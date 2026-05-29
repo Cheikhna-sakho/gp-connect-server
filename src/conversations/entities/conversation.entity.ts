@@ -49,14 +49,14 @@ export class ConversationEntity implements Conversation {
   @Type(() => UserEntity)
   @Expose()
   shipper: User;
-  shipperId: string;
+  @Expose() shipperId: string;
 
   @Type(() => UserEntity)
   @Expose()
   carrier: User;
-  carrierId: string;
+  @Expose() carrierId: string;
 
-  missionId: string | null;
+  @Expose() missionId: string | null;
 
   @Type(() => MissionEntity)
   @Expose()
