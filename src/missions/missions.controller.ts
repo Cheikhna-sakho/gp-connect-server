@@ -12,8 +12,12 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFiles,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { MissionsService } from './missions.service';
 import { CreateMissionDto } from './dtos/create-mission.dto';
 import { Roles } from 'src/auth/decorators/role.decorator';
@@ -178,6 +182,82 @@ export class MissionsController {
       type: 'DELIVERY',
       verifiedById,
     });
+  }
+
+  // ─── Proof images ─────────────────────────────────────────────────────────
+
+  @Post(':id/proof/pickup/images')
+  @Serialize(ProofEntity)
+  @UseInterceptors(
+    FilesInterceptor('images', 5, {
+      storage: memoryStorage(),
+      fileFilter: (_req, file, cb) => {
+        if (!file.mimetype.startsWith('image/')) {
+          return cb(
+            new BadRequestException(`File type not allowed: ${file.mimetype}`),
+            false,
+          );
+        }
+        cb(null, true);
+      },
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
+  async uploadPickupImages(
+    @GetUserId() userId: UUID,
+    @Param('id') missionId: string,
+    @UploadedFiles() images: Express.Multer.File[],
+  ) {
+    const mission = await this.missionsService.findOne(missionId as UUID);
+    if (!mission) throw new NotFoundException();
+    if (userId !== mission.shipperId && userId !== mission.carrierId)
+      throw new ForbiddenException();
+    if (!images?.length)
+      throw new BadRequestException('At least one image is required');
+    return this.proofsService.addImages(
+      missionId,
+      'PICKUP',
+      mission.shipperId,
+      mission.carrierId,
+      images,
+    );
+  }
+
+  @Post(':id/proof/delivery/images')
+  @Serialize(ProofEntity)
+  @UseInterceptors(
+    FilesInterceptor('images', 5, {
+      storage: memoryStorage(),
+      fileFilter: (_req, file, cb) => {
+        if (!file.mimetype.startsWith('image/')) {
+          return cb(
+            new BadRequestException(`File type not allowed: ${file.mimetype}`),
+            false,
+          );
+        }
+        cb(null, true);
+      },
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
+  async uploadDeliveryImages(
+    @GetUserId() userId: UUID,
+    @Param('id') missionId: string,
+    @UploadedFiles() images: Express.Multer.File[],
+  ) {
+    const mission = await this.missionsService.findOne(missionId as UUID);
+    if (!mission) throw new NotFoundException();
+    if (userId !== mission.shipperId && userId !== mission.carrierId)
+      throw new ForbiddenException();
+    if (!images?.length)
+      throw new BadRequestException('At least one image is required');
+    return this.proofsService.addImages(
+      missionId,
+      'DELIVERY',
+      mission.shipperId,
+      mission.carrierId,
+      images,
+    );
   }
 
   @Patch(ID_PARAM)

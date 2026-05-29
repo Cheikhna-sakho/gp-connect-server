@@ -1,11 +1,19 @@
-import { $Enums, Prisma, User } from '@prisma/client';
+import { $Enums, MissionProof, Prisma, User } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
-import { Expose, Type } from 'class-transformer';
+import { Expose, Transform, Type } from 'class-transformer';
 import { MissionPackageEntity } from './mission-package.entity';
 import { UserEntity } from 'src/users/entities/user.entity';
 
 export const MISSION_DEFAULT_INCLUDE = {
   packages: { select: { package: true } },
+  proofs: {
+    include: {
+      images: {
+        include: { image: true },
+        orderBy: { createdAt: 'asc' as const },
+      },
+    },
+  },
 } as const;
 type Mission = Prisma.MissionGetPayload<{
   include: typeof MISSION_DEFAULT_INCLUDE;
@@ -58,6 +66,23 @@ export class MissionEntity implements Mission {
   @Type(() => UserEntity)
   @Expose()
   carrier: User;
+
+  // proofs avec leurs images — transformé en { type → url[] } pour le frontend
+  @Expose()
+  @Transform(
+    ({
+      value,
+    }: {
+      value?: (MissionProof & { images: { image: { url: string } }[] })[];
+    }) => {
+      if (!value) return undefined;
+      return value.reduce<Record<string, string[]>>((acc, proof) => {
+        acc[proof.type] = proof.images.map((pi) => pi.image.url);
+        return acc;
+      }, {});
+    },
+  )
+  proofs: MissionProof[];
 
   constructor(partial: Partial<MissionEntity>) {
     Object.assign(this, partial);

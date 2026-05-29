@@ -9,6 +9,7 @@ import { ProofType } from '@prisma/client';
 import { DatabaseService } from 'src/database/database.service';
 import { generateOtp, verifyOtp } from 'src/common/utils/otp.util';
 import { ProofDto } from './dtos/proof.dto';
+import { MediasService } from 'src/medias/medias.service';
 
 @Injectable()
 export class ProofService {
@@ -17,8 +18,43 @@ export class ProofService {
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly mediasService: MediasService,
   ) {
     this.proofs = this.databaseService.missionProof;
+  }
+
+  static readonly PROOF_IMAGE_INCLUDE = {
+    images: {
+      include: { image: true },
+      orderBy: { createdAt: 'asc' as const },
+    },
+  } as const;
+
+  // Upload photos for a proof — upserts the proof record if it doesn't exist yet
+  async addImages(
+    missionId: string,
+    type: ProofType,
+    createdById: string,
+    verifiedById: string,
+    files: Express.Multer.File[],
+  ) {
+    // Ensure proof record exists (without OTP — photos can be uploaded before code generation)
+    const proof = await this.proofs.upsert({
+      where: { missionId_type: { missionId, type } },
+      create: { missionId, type, createdById, verifiedById },
+      update: {},
+    });
+
+    const medias = await this.mediasService.createManyImages(files);
+
+    await this.databaseService.missionProofImage.createMany({
+      data: medias.map((m) => ({ proofId: proof.id, imageId: m.id })),
+    });
+
+    return this.proofs.findUnique({
+      where: { id: proof.id },
+      include: ProofService.PROOF_IMAGE_INCLUDE,
+    });
   }
 
   // Called by Shipper — generates OTP and returns the plain code to display in their app
@@ -52,13 +88,17 @@ export class ProofService {
     });
 
     if (!proof) {
-      throw new NotFoundException('No proof found — ask the shipper to generate a code first');
+      throw new NotFoundException(
+        'No proof found — ask the shipper to generate a code first',
+      );
     }
     if (proof.otpUsedAt) {
       throw new BadRequestException('This code has already been used');
     }
     if (proof.otpExpiresAt < new Date()) {
-      throw new BadRequestException('Code expired — ask the shipper to generate a new one');
+      throw new BadRequestException(
+        'Code expired — ask the shipper to generate a new one',
+      );
     }
     if (proof.verifiedById && proof.verifiedById !== verifiedById) {
       throw new ForbiddenException();
@@ -116,7 +156,9 @@ export class ProofService {
         });
       }
 
-      const updatedProof = await tx.missionProof.findUnique({ where: { id: proof.id } });
+      const updatedProof = await tx.missionProof.findUnique({
+        where: { id: proof.id },
+      });
 
       // Broadcast proof verification event to all linked conversation rooms
       const conversations = await tx.conversation.findMany({
@@ -137,7 +179,10 @@ export class ProofService {
         });
         if (completedMission) {
           this.eventEmitter.emit('stats.updated', {
-            userIds: [completedMission.shipperId, completedMission.carrierId].filter(Boolean),
+            userIds: [
+              completedMission.shipperId,
+              completedMission.carrierId,
+            ].filter(Boolean),
           });
         }
       }
