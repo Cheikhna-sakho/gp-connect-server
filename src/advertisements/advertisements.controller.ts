@@ -18,7 +18,6 @@ import { Public } from 'src/common/decorators/public.decorator';
 import { ID_PARAM } from 'src/common/constants/route.util.const';
 import { RolesGuard } from 'src/auth/guards/role.guard';
 import { Roles } from 'src/auth/decorators/role.decorator';
-import { CreateAdvertisementDto } from './dtos/create-advertisements.dto';
 import { GetUserId } from 'src/common/decorators/user.decorator';
 import { CreateAdvertisementWithAddressDto } from './dtos/create-advertisements-with-address.dto';
 import { UpdateAdvertisementDto } from './dtos/update-advertisement.dto';
@@ -180,20 +179,33 @@ export class AdvertisementsController {
   }
 
   @UseGuards(RolesGuard)
-  @Roles('SHIPPER')
+  @Roles('CARRIER')
   @Post('delivery')
   @Serialize(AdvertisementEntity)
   async createDelivery(
     @GetUserId() authorId: string,
-    @Body() data: CreateAdvertisementDto,
+    @Body() data: CreateAdvertisementWithAddressDto,
   ) {
     data.authorId = authorId;
     data.type = 'DELIVERY';
-    return this.advertisementsService.create(data);
+    const { departure, destination, ...dto } = data;
+    const { id: destinationId } = await this.addressService.createIfNotExist(
+      { ...destination },
+      { id: true },
+    );
+    const { id: departureId } = await this.addressService.createIfNotExist(
+      { ...departure },
+      { id: true },
+    );
+    return this.advertisementsService.create({
+      ...dto,
+      destinationId,
+      departureId,
+    });
   }
 
   @UseGuards(RolesGuard)
-  @Roles('CARRIER')
+  @Roles('SHIPPER')
   @Post('shipping')
   @Serialize(AdvertisementEntity)
   async createShipping(
