@@ -13,6 +13,16 @@ import { UserEntity } from 'src/users/entities/user.entity';
 // Used for list endpoints — lightweight (no proof images, no transaction)
 export const MISSION_DEFAULT_INCLUDE = {
   packages: { select: { package: true } },
+  advertisement: {
+    select: {
+      departure: {
+        select: { city: { select: { name: true, countryIsoCode: true } } },
+      },
+      destination: {
+        select: { city: { select: { name: true, countryIsoCode: true } } },
+      },
+    },
+  },
 } as const;
 
 // Used for detail endpoint — full data
@@ -96,6 +106,10 @@ export class MissionEntity implements Mission {
     },
   )
   proofs: any[];
+
+  // Advertisement — only departure/destination city for list view
+  @Expose()
+  advertisement: any;
 
   // Transaction — only present on detail view
   @Expose()

@@ -71,10 +71,12 @@ export class AuthService {
   // ─── OTP-based login ──────────────────────────────────────────────────────
 
   async login({ email, sendOptTo = VerificationTokenType.EMAIL }: LoginDto) {
-    const all = await this.databaseService.user.findMany();
-    console.log(all);
-    const user = await this.usersService.findByEmail(email);
-    if (!user) throw new UnauthorizedException('Invalid email');
+    // identifier can be an email or a phone number (sendOptTo === PHONE)
+    let user = await this.usersService.findByEmail(email);
+    if (!user && sendOptTo === VerificationTokenType.PHONE) {
+      user = await this.usersService.findOne({ where: { phone: email } });
+    }
+    if (!user) throw new UnauthorizedException('Invalid credentials');
     if (sendOptTo === VerificationTokenType.EMAIL) {
       return this.usersService.sendEmailOpt(user.id);
     }
