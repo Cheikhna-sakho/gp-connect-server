@@ -1,9 +1,14 @@
 import { NestFactory, Reflector } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { IoAdapter } from '@nestjs/platform-socket.io';
-import { ClassSerializerInterceptor, ValidationPipe } from '@nestjs/common';
+import {
+  ClassSerializerInterceptor,
+  Logger,
+  ValidationPipe,
+} from '@nestjs/common';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
+import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
 const PORT = process.env.PORT ?? 4000;
 
@@ -19,7 +24,10 @@ async function bootstrap() {
     credentials: true,
   });
 
-  app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
+  app.useGlobalInterceptors(
+    new LoggingInterceptor(),
+    new ClassSerializerInterceptor(app.get(Reflector)),
+  );
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -27,6 +35,8 @@ async function bootstrap() {
     }),
   );
 
+  const logger = new Logger('Bootstrap');
   await app.listen(PORT);
+  logger.log(`Server running on port ${PORT}`);
 }
 bootstrap();
