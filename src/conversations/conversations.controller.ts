@@ -40,11 +40,16 @@ export class ConversationsController {
 
   @Get(`advertisement/${SetIdParam('advertisementId')}`)
   @Serialize(ConversationEntity)
-  getExist(
+  async getExist(
     @GetUserId() userId: UUID,
     @Param('advertisementId') advertisementId: UUID,
   ) {
-    return this.conversationsService.findByAdvertisement(advertisementId, userId);
+    const conv = await this.conversationsService.findByAdvertisement(
+      advertisementId,
+      userId,
+    );
+    if (!conv) throw new NotFoundException();
+    return conv;
   }
 
   @Get(ID_PARAM)
