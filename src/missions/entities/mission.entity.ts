@@ -9,6 +9,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Expose, Transform, Type } from 'class-transformer';
 import { MissionPackageEntity } from './mission-package.entity';
 import { UserEntity } from 'src/users/entities/user.entity';
+import { TransactionEntity } from 'src/transactions/entities/transaction.entity';
 
 // Used for list endpoints — lightweight (no proof images, no transaction)
 export const MISSION_DEFAULT_INCLUDE = {
@@ -29,6 +30,16 @@ export const MISSION_DEFAULT_INCLUDE = {
 export const MISSION_DETAIL_INCLUDE = {
   packages: { select: { package: true } },
   transaction: true,
+  advertisement: {
+    select: {
+      departure: {
+        select: { city: { select: { name: true, countryIsoCode: true } } },
+      },
+      destination: {
+        select: { city: { select: { name: true, countryIsoCode: true } } },
+      },
+    },
+  },
   proofs: {
     include: {
       images: {
@@ -98,7 +109,7 @@ export class MissionEntity implements Mission {
     }: {
       value?: (MissionProof & { images: { image: { url: string } }[] })[];
     }) => {
-      if (!value) return undefined;
+      if (!Array.isArray(value)) return undefined;
       return value.reduce<Record<string, string[]>>((acc, proof) => {
         acc[proof.type] = proof.images.map((pi) => pi.image.url);
         return acc;
@@ -113,6 +124,7 @@ export class MissionEntity implements Mission {
 
   // Transaction — only present on detail view
   @Expose()
+  @Type(() => TransactionEntity)
   transaction: Transaction | null;
 
   constructor(partial: Partial<MissionEntity>) {
