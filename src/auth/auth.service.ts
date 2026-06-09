@@ -170,8 +170,8 @@ export class AuthService {
       },
       AuthProvider.GOOGLE,
     );
-    const accessToken = await this.signAccessTokenJwt({ id: user.id as UUID });
-    return { user, accessToken };
+    const { accessToken, refreshToken } = await this.signTokenPair(user.id);
+    return { user, accessToken, refreshToken };
   }
 
   // ─── Google mobile — verify idToken from Google Sign-In SDK ───────────────

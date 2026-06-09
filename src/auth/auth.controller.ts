@@ -149,11 +149,13 @@ export class AuthController {
   async googleAuthCallback(@Req() req: Request, @Res() res: Response) {
     const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
     try {
-      const { accessToken } = await this.authService.validateOAuthLoginGoogle(
-        req.user as { providerUserId: string; email?: string; name?: string },
-      );
-      // Le refresh token n'est pas émis pour le flux web Google (session courte)
-      res.cookie('at', accessToken, ACCESS_COOKIE_OPTIONS);
+      const { accessToken, refreshToken } =
+        await this.authService.validateOAuthLoginGoogle(
+          req.user as { providerUserId: string; email?: string; name?: string },
+        );
+      // Pose at + rt comme les autres flux, pour que le refresh transparent
+      // fonctionne (sinon déconnexion à l'expiration de l'access token).
+      setAuthCookies(res, accessToken, refreshToken);
       res.redirect(`${frontendUrl}/auth/callback`);
     } catch {
       res.redirect(`${frontendUrl}/auth/callback?error=oauth`);
