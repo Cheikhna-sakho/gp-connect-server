@@ -123,21 +123,23 @@ getMe(@GetUserId() id: UUID) {
 
 ```
 1. Inscription → vérification email + téléphone
-2. [Optionnel] Vérification d'identité (Stripe KYC)
-3. Créer une annonce SHIPPING
-   POST /advertisements/shipping
-   { departure: "Paris", destination: "Lyon", date, price: 45€, maxWeight: 15kg }
+2. Vérification d'identité (Stripe KYC)
+   ⚠ requise pour qu'une offre puisse être acceptée (gating dans OffersService.accept)
+3. Créer une annonce DELIVERY (trajet)
+   POST /advertisements/delivery
+   { departure: "Paris", destination: "Lyon", date, price: 45€/kg, maxWeight: 15kg }
 
 4. Recevoir des demandes de shippers dans les conversations
-5. Négocier le prix via le chat (MessageOffer)
-6. Accepter une offre → mission ACCEPTED, transaction PENDING
+5. Négocier le prix via le chat (MessageOffer — price = montant TOTAL convenu)
+6. Offre acceptée → mission ACCEPTED, transaction PENDING (une seule étape, atomique)
 7. Récupérer le colis
-   → Shipper génère le code : POST /missions/:id/proof/pickup
+   → Shipper génère le code : POST /missions/:id/proof/pickup   (mission ACCEPTED)
    → Carrier entre le code : POST /missions/:id/verify/pickup
    → Packages → PICKED_UP | Mission → IN_TRANSIT
 8. Livrer le colis
-   → Shipper génère le code : POST /missions/:id/proof/delivery
-   → Carrier entre le code : POST /missions/:id/verify/delivery
+   → Shipper génère le code : POST /missions/:id/proof/delivery (mission IN_TRANSIT)
+     (si un destinataire avec téléphone est renseigné → code envoyé par SMS au destinataire)
+   → Carrier entre le code reçu du destinataire : POST /missions/:id/verify/delivery
    → Packages → DELIVERED | Mission → COMPLETED | Transaction → COMPLETED
 9. Laisser une note au shipper : POST /ratings/mission/:id
 ```
@@ -150,23 +152,28 @@ getMe(@GetUserId() id: UUID) {
 3. Option A — Trouver un carrier qui fait le trajet
    GET /advertisements?departureCityName=Paris&destinationCityName=Lyon
    → Ouvrir une conversation avec le carrier de son choix
+     (une mission est créée avec les colis sélectionnés)
 4. Option B — Poster sa demande
-   POST /advertisements/delivery
-   { departure, destination, date, weight: 3kg }
-   → Attendre qu'un carrier réponde
-5. Négocier le prix (counter-offres possibles des deux côtés)
-6. Accepter l'offre → mission ACCEPTED
-7. Générer le code de remise (pickup) → montrer au carrier
-8. Générer le code de livraison → donner au carrier à destination
-9. Laisser une note au carrier
+   POST /advertisements/shipping
+   { departure, destination, date, price (budget total), packageIds }
+   → annonce + mission-dossier (avec les colis) créées atomiquement
+   → toutes les conversations ouvertes par des carriers se rattachent à cette mission
+5. Négocier le prix (counter-offres possibles des deux côtés — price = montant TOTAL)
+6. Accepter l'offre via le récapitulatif (trajet, prix, colis) → mission ACCEPTED
+   ⚠ refusé si le carrier n'a pas vérifié son identité
+7. [Recommandé] Renseigner le destinataire : PATCH /missions/:id { recipientName, recipientPhone }
+8. Générer le code de remise (pickup) → montrer au carrier
+9. Générer le code de livraison (mission IN_TRANSIT)
+   → envoyé par SMS au destinataire s'il a un téléphone, sinon à transmettre soi-même
+10. Laisser une note au carrier
 ```
 
 ### Machine à états Mission
 
 ```
                     ┌─────────────┐
-                    │   PENDING   │ ← créée à l'ouverture de conversation
-                    └──────┬──────┘
+                    │   PENDING   │ ← mission-dossier créée avec l'annonce SHIPPING,
+                    └──────┬──────┘   ou à l'ouverture de conversation (annonce DELIVERY)
                            │ offre ACCEPTED
                     ┌──────▼──────┐
               ┌─────│  ACCEPTED   │─────┐
@@ -235,8 +242,8 @@ getMe(@GetUserId() id: UUID) {
 | GET | `/advertisements/mine` | Mes annonces (avec offers[]) |
 | GET | `/advertisements/:id` | Détail d'une annonce |
 | GET | `/advertisements/:id/offers` | Offres en attente sur mon annonce |
-| POST | `/advertisements/shipping` | Créer une annonce SHIPPING (CARRIER only) |
-| POST | `/advertisements/delivery` | Créer une annonce DELIVERY (SHIPPER only) |
+| POST | `/advertisements/shipping` | Créer une annonce SHIPPING (SHIPPER only) — accepte `packageIds[]` : l'annonce, sa **mission-dossier** (PENDING, sans carrier) et le rattachement des colis sont créés atomiquement |
+| POST | `/advertisements/delivery` | Créer une annonce DELIVERY (CARRIER only) |
 | PATCH | `/advertisements/:id` | Modifier (auteur only) |
 | DELETE | `/advertisements/:id` | Supprimer (auteur only) |
 
@@ -276,11 +283,11 @@ getMe(@GetUserId() id: UUID) {
 | GET | `/missions/:id` | Détail (participant only) |
 | POST | `/missions` | Créer manuellement |
 | POST | `/missions/:id/packages` | Ajouter des colis (PENDING/ACCEPTED only) |
-| POST | `/missions/:id/proof/pickup` | Générer OTP pickup (Shipper) |
-| POST | `/missions/:id/verify/pickup` | Vérifier OTP pickup (Carrier) |
-| POST | `/missions/:id/proof/delivery` | Générer OTP delivery (Shipper) |
-| POST | `/missions/:id/verify/delivery` | Vérifier OTP delivery (Carrier) |
-| PATCH | `/missions/:id` | Modifier (CANCELLED uniquement) |
+| POST | `/missions/:id/proof/pickup` | Générer OTP pickup (Shipper, mission ACCEPTED) |
+| POST | `/missions/:id/verify/pickup` | Vérifier OTP pickup (Carrier, mission ACCEPTED) |
+| POST | `/missions/:id/proof/delivery` | Générer OTP delivery (Shipper, mission IN_TRANSIT) — envoie le code par SMS au destinataire si `recipientPhone` est renseigné (`sentToRecipient` dans la réponse) |
+| POST | `/missions/:id/verify/delivery` | Vérifier OTP delivery (Carrier, mission IN_TRANSIT) |
+| PATCH | `/missions/:id` | Statut : CANCELLED uniquement · Destinataire : `recipientName`/`recipientPhone` (Shipper, mission active) |
 | DELETE | `/missions/:id/packages/:packageId` | Retirer un colis |
 
 ### Offres — `/offers`
@@ -290,11 +297,16 @@ getMe(@GetUserId() id: UUID) {
 | PATCH | `/offers/:id` | Accepter ou rejeter une offre |
 | GET | `/offers/accepted/:conversationId/last` | Dernière offre acceptée |
 
-**Accepter une offre déclenche :** mission ACCEPTED + carrierId assigné + negotiatedPrice fixé + transaction créée + autres offres rejetées.
+**Accepter une offre déclenche :** mission ACCEPTED + carrierId assigné + negotiatedPrice fixé + transaction créée + autres offres rejetées + autres missions PENDING de l'annonce annulées + leurs conversations archivées.
+
+**Pré-requis :** le carrier doit avoir vérifié son identité (`idCardVerifiedAt`) — sinon 403, que ce soit lui ou le shipper qui accepte.
+
+**Convention :** `offer.price` = **montant total convenu** pour `offer.weight` kg (pas un tarif au kg) — c'est ce montant qui devient `transaction.amount`.
 
 ### Preuves — système OTP
 
 ```
+── Ramassage (mission ACCEPTED) ────────────────────────────────
 Shipper → POST /missions/:id/proof/pickup
          ← { code: "481920", expiresAt: ... }
          → montre le code au Carrier
@@ -302,16 +314,34 @@ Shipper → POST /missions/:id/proof/pickup
 Carrier → POST /missions/:id/verify/pickup { code: "481920" }
          ← proof verified
          → Packages PICKED_UP, Mission IN_TRANSIT
+
+── Livraison (mission IN_TRANSIT) ──────────────────────────────
+Shipper → POST /missions/:id/proof/delivery
+         ← { code: "729384", expiresAt, sentToRecipient }
+         → si recipientPhone renseigné : SMS automatique au destinataire
+           sinon : le shipper transmet le code lui-même
+
+Destinataire → donne le code au Carrier à la remise du colis
+
+Carrier → POST /missions/:id/verify/delivery { code: "729384" }
+         ← proof verified
+         → Packages DELIVERED, Mission COMPLETED, Transaction COMPLETED
 ```
 
 ### Transactions — `/transactions`
 
 | Méthode | Route | Description |
 |---------|-------|-------------|
-| GET | `/transactions/mission/:id` | Transaction d'une mission (participant) |
+| GET | `/transactions/mission/:id` | Transaction d'une mission (participant — shipper ET carrier) |
 | PATCH | `/transactions/:id` | Changer la méthode de paiement (Shipper, si PENDING) |
 
 **Cycle automatique :** PENDING (à l'acceptation) → COMPLETED (à la livraison) / CANCELLED (si mission annulée).
+
+**Paiement hors plateforme :** GPConnect ne traite pas les fonds — le paiement
+se fait de main à main (espèces) à la remise. La transaction trace le montant
+convenu et son statut. `transactionReference` est réservé à une future
+intégration PSP (escrow : encaissement à l'acceptation, libération à la
+vérification du code livraison).
 
 ### Disputes — `/disputes`
 
