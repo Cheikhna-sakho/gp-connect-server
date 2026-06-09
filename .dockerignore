@@ -1,6 +1,18 @@
 node_modules
+dist
 test
+.git
 .gitignore
-DockerFile
+Dockerfile
+.dockerignore
 README.md
 pgdata
+
+# Secrets & env local — fournis par Railway, jamais dans l'image
+.env
+.env.*
+!.env.example
+
+# Divers
+*.log
+forge-token.tmp.js
