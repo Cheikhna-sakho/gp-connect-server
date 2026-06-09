@@ -94,10 +94,16 @@ export class AdvertisementEntity implements Advertisement {
   @Expose()
   @Type(() => MissionEntity)
   missions: MissionEntity[];
+
+  // Les missions annulées ne comptent pas dans la capacité/les colis affichés
+  private get activeMissions() {
+    return this.missions?.filter((m) => m.status !== 'CANCELLED');
+  }
+
   @Expose()
   get cumulatedWeight() {
     return (
-      this.missions?.reduce((total, { cumulatedWeight: weight }) => {
+      this.activeMissions?.reduce((total, { cumulatedWeight: weight }) => {
         total += weight ?? 0;
         return total;
       }, 0) ?? 0
@@ -107,7 +113,7 @@ export class AdvertisementEntity implements Advertisement {
   @Expose()
   get packagesCount() {
     return (
-      this.missions?.reduce((total, { packagesCount: len }) => {
+      this.activeMissions?.reduce((total, { packagesCount: len }) => {
         total += len ?? 0;
         return total;
       }, 0) ?? 0
