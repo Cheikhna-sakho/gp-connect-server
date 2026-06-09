@@ -23,7 +23,9 @@ export class OffersService {
     return this.offers.findUnique({
       where: { id },
       include: {
-        mission: { select: { id: true, carrierId: true, shipperId: true, status: true } },
+        mission: {
+          select: { id: true, carrierId: true, shipperId: true, status: true },
+        },
         message: { select: { conversationId: true, authorId: true } },
       },
     });
@@ -73,12 +75,28 @@ export class OffersService {
     const { conversation } = offer.message;
     const { shipperId, carrierId, missionId } = conversation;
 
-    if (userId !== shipperId && userId !== carrierId) throw new ForbiddenException();
+    if (userId !== shipperId && userId !== carrierId)
+      throw new ForbiddenException();
     if (offer.message.authorId === userId) {
       throw new ForbiddenException('Cannot accept your own offer');
     }
     if (!missionId) {
       throw new BadRequestException('No mission linked to this conversation');
+    }
+
+    // Gating KYC : un transporteur doit avoir vérifié son identité avant de
+    // se voir confier des colis. C'est ici (et seulement ici) que la
+    // vérification d'identité devient bloquante — pas à l'inscription.
+    const carrier = await this.databaseService.user.findUnique({
+      where: { id: carrierId },
+      select: { idCardVerifiedAt: true },
+    });
+    if (!carrier?.idCardVerifiedAt) {
+      throw new ForbiddenException(
+        userId === carrierId
+          ? "Vérifiez votre identité (Paramètres) avant d'accepter une mission."
+          : "Ce transporteur n'a pas encore vérifié son identité — la mission ne peut pas démarrer.",
+      );
     }
 
     const result = await this.databaseService.$transaction(async (tx) => {
@@ -89,7 +107,9 @@ export class OffersService {
 
       if (!mission) throw new NotFoundException('Mission not found');
       if (mission.status !== 'PENDING') {
-        throw new BadRequestException('This conversation already has an accepted offer');
+        throw new BadRequestException(
+          'This conversation already has an accepted offer',
+        );
       }
 
       await tx.mission.update({
@@ -117,17 +137,30 @@ export class OffersService {
       });
 
       await tx.transaction.create({
-        data: { missionId, amount: offer.price, method: 'CASH', status: 'PENDING' },
+        data: {
+          missionId,
+          amount: offer.price,
+          method: 'CASH',
+          status: 'PENDING',
+        },
       });
 
       // Cancel other PENDING missions for this advertisement (one accepted = others closed)
       await tx.mission.updateMany({
-        where: { advertisementId: mission.advertisementId, id: { not: missionId }, status: 'PENDING' },
+        where: {
+          advertisementId: mission.advertisementId,
+          id: { not: missionId },
+          status: 'PENDING',
+        },
         data: { status: 'CANCELLED' },
       });
       // Archive their conversations (all other active conversations for this ad)
       await tx.conversation.updateMany({
-        where: { advertisementId: mission.advertisementId, id: { not: conversation.id }, status: 'ACTIVE' },
+        where: {
+          advertisementId: mission.advertisementId,
+          id: { not: conversation.id },
+          status: 'ACTIVE',
+        },
         data: { status: 'ARCHIVED' },
       });
 
@@ -175,7 +208,9 @@ export class OffersService {
           select: {
             authorId: true,
             conversationId: true,
-            conversation: { select: { id: true, shipperId: true, carrierId: true } },
+            conversation: {
+              select: { id: true, shipperId: true, carrierId: true },
+            },
           },
         },
       },
@@ -187,10 +222,17 @@ export class OffersService {
     }
 
     const { shipperId, carrierId } = offer.message.conversation;
-    if (userId !== shipperId && userId !== carrierId) throw new ForbiddenException();
+    if (userId !== shipperId && userId !== carrierId)
+      throw new ForbiddenException();
 
-    if (data.status && data.status !== 'PENDING' && offer.message.authorId === userId) {
-      throw new ForbiddenException('Cannot change the status of your own offer');
+    if (
+      data.status &&
+      data.status !== 'PENDING' &&
+      offer.message.authorId === userId
+    ) {
+      throw new ForbiddenException(
+        'Cannot change the status of your own offer',
+      );
     }
 
     const updated = await this.offers.update({ where: { id }, data });
