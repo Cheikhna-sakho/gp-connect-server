@@ -36,10 +36,15 @@ const OTP_THROTTLE = { default: { limit: 5, ttl: 900_000 } };
 
 const IS_PROD = process.env.NODE_ENV === 'production';
 
+// En prod, front (Vercel) et back (Railway) sont cross-site : un cookie
+// SameSite=Lax ne serait pas envoyé par les requêtes XHR du front. On passe
+// donc à SameSite=None (qui impose Secure). En local on garde Lax.
+const SAME_SITE = IS_PROD ? ('none' as const) : ('lax' as const);
+
 const ACCESS_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: IS_PROD,
-  sameSite: 'lax' as const,
+  sameSite: SAME_SITE,
   path: '/',
   maxAge: 24 * 60 * 60 * 1000, // 1 jour
 };
@@ -47,7 +52,7 @@ const ACCESS_COOKIE_OPTIONS = {
 const REFRESH_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: IS_PROD,
-  sameSite: 'lax' as const,
+  sameSite: SAME_SITE,
   path: '/',
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 jours
 };
@@ -129,7 +134,11 @@ export class AuthController {
     return this.authService.verifyEmail(token);
   }
 
-  // ─── Google web OAuth (popup / redirect) ─────────────────────────────────
+  // ─── Google web OAuth (redirection plein écran) ──────────────────────────
+  // Flux : le front navigue vers /auth/google (pas de popup). Au retour de
+  // Google, on pose le cookie de session puis on renvoie le navigateur vers
+  // une page de callback du front, qui chargera l'utilisateur via /users/me.
+  // Le back reste ainsi indépendant de la structure de données du front.
 
   @Get('google')
   @UseGuards(GoogleAuthGuard)
@@ -137,23 +146,18 @@ export class AuthController {
 
   @Get('google/callback')
   @UseGuards(GoogleAuthGuard)
-  async googleAuthCallback(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    const { user, accessToken } =
-      await this.authService.validateOAuthLoginGoogle(
+  async googleAuthCallback(@Req() req: Request, @Res() res: Response) {
+    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
+    try {
+      const { accessToken } = await this.authService.validateOAuthLoginGoogle(
         req.user as { providerUserId: string; email?: string; name?: string },
       );
-    // Le refresh token n'est pas émis pour le flux web Google (session courte)
-    res.cookie('at', accessToken, ACCESS_COOKIE_OPTIONS);
-    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
-    return `
-      <script>
-        window.opener.postMessage(${JSON.stringify({ user })}, ${JSON.stringify(frontendUrl)});
-        window.close();
-      </script>
-    `;
+      // Le refresh token n'est pas émis pour le flux web Google (session courte)
+      res.cookie('at', accessToken, ACCESS_COOKIE_OPTIONS);
+      res.redirect(`${frontendUrl}/auth/callback`);
+    } catch {
+      res.redirect(`${frontendUrl}/auth/callback?error=oauth`);
+    }
   }
 
   // ─── Google mobile ────────────────────────────────────────────────────────
