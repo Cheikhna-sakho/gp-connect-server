@@ -69,12 +69,23 @@ export class ConversationsService {
     };
   }
 
-  async getAdvertisementForConversation(conversationId: string, userId: string) {
+  async getAdvertisementForConversation(
+    conversationId: string,
+    userId: string,
+  ) {
     const conv = await this.conversations.findFirst({
-      where: { id: conversationId, OR: [{ shipperId: userId }, { carrierId: userId }] },
+      where: {
+        id: conversationId,
+        OR: [{ shipperId: userId }, { carrierId: userId }],
+      },
       select: {
         advertisement: {
-          select: { arrivalDate: true, status: true, maxWeight: true, type: true },
+          select: {
+            arrivalDate: true,
+            status: true,
+            maxWeight: true,
+            type: true,
+          },
         },
       },
     });
@@ -100,6 +111,22 @@ export class ConversationsService {
         advertisementId,
         OR: [{ shipperId: userId }, { carrierId: userId }],
       },
+    });
+  }
+
+  /**
+   * Mission-dossier d'une annonce SHIPPING : la mission PENDING sans carrier
+   * créée atomiquement avec l'annonce, qui porte les colis du shipper.
+   */
+  findDossierMission(advertisementId: string, shipperId: string) {
+    return this.databaseService.mission.findFirst({
+      where: {
+        advertisementId,
+        shipperId,
+        carrierId: null,
+        status: 'PENDING',
+      },
+      select: { id: true },
     });
   }
 

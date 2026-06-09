@@ -1,4 +1,10 @@
-import { IsObject, ValidateNested } from 'class-validator';
+import {
+  IsArray,
+  IsObject,
+  IsOptional,
+  IsUUID,
+  ValidateNested,
+} from 'class-validator';
 import { CreateAdvertisementDto } from './create-advertisements.dto';
 import { OmitType } from '@nestjs/mapped-types';
 import { CreateFullAddressDto } from 'src/addresses/dtos/create-full-address.dto';
@@ -17,4 +23,13 @@ export class CreateAdvertisementWithAddressDto extends OmitType(
   @ValidateNested()
   @Type(() => CreateFullAddressDto)
   destination: CreateFullAddressDto;
+
+  /**
+   * Annonce SHIPPING uniquement : colis à rattacher à la mission-dossier
+   * créée atomiquement avec l'annonce.
+   */
+  @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
+  packageIds?: string[];
 }

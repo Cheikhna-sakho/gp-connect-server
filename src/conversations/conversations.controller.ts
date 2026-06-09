@@ -74,6 +74,19 @@ export class ConversationsController {
       type === 'DELIVERY'
         ? { shipperId: userId, carrierId: authorId }
         : { shipperId: authorId, carrierId: userId };
+
+    // Annonce SHIPPING : toutes les conversations partagent la mission-dossier
+    // de l'annonce (celle qui porte les colis du shipper). Le carrier y sera
+    // assigné à l'acceptation d'une offre. Sans dossier (annonces legacy),
+    // on retombe sur la création d'une mission par conversation.
+    if (type === 'SHIPPING' && !data.missionId) {
+      const dossier = await this.conversationsService.findDossierMission(
+        data.advertisementId,
+        authorId,
+      );
+      if (dossier) data.missionId = dossier.id;
+    }
+
     return this.conversationsService.create({ ...data, ...payload });
   }
 

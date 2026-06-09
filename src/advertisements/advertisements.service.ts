@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { AdvertisementStatus, Prisma } from '@prisma/client';
 import { DatabaseService } from 'src/database/database.service';
 import { CreateAdvertisementDto } from './dtos/create-advertisements.dto';
@@ -125,8 +129,43 @@ export class AdvertisementsService {
     });
   }
 
-  async create(dto: CreateAdvertisementDto) {
-    const { destinationId, departureId, authorId, ...data } = dto;
+  async create(dto: CreateAdvertisementDto & { packageIds?: string[] }) {
+    const { destinationId, departureId, authorId, packageIds, ...data } = dto;
+
+    // Les colis rattachés doivent appartenir à l'auteur de l'annonce
+    if (packageIds?.length) {
+      const owned = await this.databaseService.package.count({
+        where: { id: { in: packageIds }, ownerId: authorId },
+      });
+      if (owned !== packageIds.length) {
+        throw new BadRequestException(
+          'Some packages do not belong to the advertisement author',
+        );
+      }
+    }
+
+    // Annonce SHIPPING : la mission-dossier (sans carrier, status PENDING)
+    // est créée atomiquement avec l'annonce et porte les colis. C'est elle
+    // qui sera connectée aux conversations puis activée à l'acceptation.
+    const missionDossier =
+      data.type === 'SHIPPING'
+        ? {
+            missions: {
+              create: {
+                shipper: { connect: { id: authorId } },
+                ...(packageIds?.length
+                  ? {
+                      packages: {
+                        createMany: {
+                          data: packageIds.map((packageId) => ({ packageId })),
+                        },
+                      },
+                    }
+                  : {}),
+              },
+            },
+          }
+        : {};
 
     return this.advertisements.create({
       data: {
@@ -138,6 +177,7 @@ export class AdvertisementsService {
         author: { connect: { id: authorId } },
         departure: { connect: { id: departureId } },
         destination: { connect: { id: destinationId } },
+        ...missionDossier,
       },
     });
   }
