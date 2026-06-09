@@ -7,6 +7,9 @@ export class ProofOtpEntity {
   @Expose()
   expiresAt: Date;
 
+  /** true si le code a aussi été envoyé par SMS au destinataire */
+  @Expose() sentToRecipient?: boolean;
+
   constructor(partial: Partial<ProofOtpEntity>) {
     Object.assign(this, partial);
   }

@@ -101,6 +101,10 @@ export class MissionEntity implements Mission {
   @Expose()
   carrier: User;
 
+  // Destinataire à destination (visible des deux parties de la mission)
+  @Expose() recipientName: string | null;
+  @Expose() recipientPhone: string | null;
+
   // proofs avec leurs images — transformé en { type → url[] } pour le frontend
   @Expose()
   @Transform(

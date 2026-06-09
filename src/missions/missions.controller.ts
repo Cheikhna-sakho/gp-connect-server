@@ -34,12 +34,14 @@ import { SerializePage } from 'src/common/decorators/serialize-page.decorator';
 import { MissionEntity } from './entities/mission.entity';
 import { ProofEntity } from 'src/proof/entities/proof.entity';
 import { ProofOtpEntity } from 'src/proof/entities/proof-otp.entity';
+import { PhoneService } from 'src/phone/phone.service';
 
 @Controller('missions')
 export class MissionsController {
   constructor(
     private readonly missionsService: MissionsService,
     private readonly proofsService: ProofService,
+    private readonly phoneService: PhoneService,
   ) {}
 
   @UseGuards(RolesGuard)
@@ -128,20 +130,41 @@ export class MissionsController {
   ) {
     const mission = await this.missionsService.findOne(missionId as UUID);
     if (!mission) throw new NotFoundException();
-    if (mission.status !== 'ACCEPTED') {
+    // Le code de livraison se génère pendant le transport (le pickup vérifié
+    // a déjà fait passer la mission en IN_TRANSIT)
+    if (mission.status !== 'IN_TRANSIT') {
       throw new BadRequestException(
-        'Mission must be accepted before generating a proof',
+        'Mission must be in transit before generating a delivery proof',
       );
     }
     if (mission.shipperId !== userId) throw new ForbiddenException();
     if (!mission.carrierId)
       throw new BadRequestException('No carrier assigned to this mission yet');
-    return this.proofsService.create({
+    const otp = await this.proofsService.create({
       missionId,
       type: 'DELIVERY',
       createdById: mission.shipperId,
       verifiedById: mission.carrierId,
     });
+
+    // Si un destinataire est renseigné, le code lui part directement par SMS :
+    // c'est lui qui le remettra au transporteur à destination.
+    let sentToRecipient = false;
+    if (mission.recipientPhone) {
+      try {
+        await this.phoneService.sendDeliveryCode(
+          mission.recipientPhone,
+          otp.code,
+          otp.expiresAt,
+        );
+        sentToRecipient = true;
+      } catch {
+        // L'échec du SMS ne doit pas bloquer la génération : le shipper
+        // garde le code à l'écran et peut le transmettre lui-même.
+      }
+    }
+
+    return { ...otp, sentToRecipient };
   }
 
   // ─── Proof verification (Carrier) ─────────────────────────────────────────
@@ -175,8 +198,9 @@ export class MissionsController {
   ) {
     const mission = await this.missionsService.findOne(missionId as UUID);
     if (!mission) throw new NotFoundException();
-    if (mission.status !== 'ACCEPTED')
-      throw new BadRequestException('Mission is not in an active state');
+    // La livraison se vérifie pendant le transport (IN_TRANSIT)
+    if (mission.status !== 'IN_TRANSIT')
+      throw new BadRequestException('Mission is not in transit');
     if (mission.carrierId !== verifiedById) throw new ForbiddenException();
     return this.proofsService.verify({
       missionId,
@@ -288,6 +312,17 @@ export class MissionsController {
       throw new BadRequestException(
         'carrierId cannot be set manually. It is assigned via offer acceptance.',
       );
+    }
+    // Le destinataire est renseigné par le shipper, tant que la mission est active
+    if ('recipientName' in data || 'recipientPhone' in data) {
+      if (userId !== mission.shipperId) {
+        throw new ForbiddenException('Only the shipper can set the recipient');
+      }
+      if (!['PENDING', 'ACCEPTED', 'IN_TRANSIT'].includes(mission.status)) {
+        throw new BadRequestException(
+          'Recipient can only be set while the mission is active',
+        );
+      }
     }
     return this.missionsService.update(id, data);
   }

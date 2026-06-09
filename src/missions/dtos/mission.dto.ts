@@ -7,7 +7,10 @@ import {
   IsEnum,
   IsNumber,
   IsOptional,
+  IsPhoneNumber,
+  IsString,
   IsUUID,
+  MaxLength,
 } from 'class-validator';
 
 export class MissionDto implements Mission {
@@ -23,6 +26,17 @@ export class MissionDto implements Mission {
   negotiatedPrice: Decimal;
   @IsEnum($Enums.MissionStatus)
   status: $Enums.MissionStatus;
+
+  // Destinataire à destination (sans compte) — renseigné par le shipper
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  recipientName: string;
+
+  @IsOptional()
+  @IsPhoneNumber()
+  recipientPhone: string;
+
   @IsDate()
   createdAt: Date;
   @IsDate()
