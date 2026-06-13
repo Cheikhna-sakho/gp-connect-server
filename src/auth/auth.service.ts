@@ -105,7 +105,11 @@ export class AuthService {
 
   async register(data: Prisma.UserCreateInput) {
     const user = await this.usersService.create({ data });
-    await this.usersService.sendPhoneVerification(user.id);
+    // Vérif SMS seulement si un téléphone est renseigné (désactivé à
+    // l'inscription tant que TWILIO_FROM n'est pas configuré).
+    if (user.phone) {
+      await this.usersService.sendPhoneVerification(user.id);
+    }
     await this.usersService.sendEmailVerification(user.id);
     return user;
   }

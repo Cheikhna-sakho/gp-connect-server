@@ -6,7 +6,8 @@ import { UserDto } from './user.dto';
 export class CreateUserDto
   extends PickType(UserDto, [
     'email',
-    'phone',
+    // 'phone' temporairement désactivé à l'inscription : pas de TWILIO_FROM
+    // configuré pour l'envoi du SMS de vérification. À réactiver ensuite.
     'password',
     'firstName',
     'lastName',
