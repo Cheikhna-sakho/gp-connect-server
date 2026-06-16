@@ -1,10 +1,15 @@
-import { PickType } from '@nestjs/mapped-types';
 import { VerificationTokenType } from '@prisma/client';
-import { IsEnum, IsOptional } from 'class-validator';
-import { CreateUserDto } from 'src/users/dtos/create-user.dto';
+import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
-export class LoginDto extends PickType(CreateUserDto, ['email']) {
+export class LoginDto {
+  // Email OU numéro de téléphone : le compte est résolu côté service en
+  // testant les deux colonnes. `sendOptTo` ne désigne que le canal d'envoi
+  // de l'OTP (EMAIL par défaut), pas la nature de l'identifiant.
+  @IsString()
+  @IsNotEmpty()
+  identifier: string;
+
   @IsEnum(VerificationTokenType)
   @IsOptional()
-  sendOptTo: VerificationTokenType;
+  sendOptTo?: VerificationTokenType;
 }

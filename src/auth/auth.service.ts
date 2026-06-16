@@ -70,34 +70,38 @@ export class AuthService {
 
   // ─── OTP-based login ──────────────────────────────────────────────────────
 
-  async login({ email, sendOptTo = VerificationTokenType.EMAIL }: LoginDto) {
-    // identifier can be an email or a phone number (sendOptTo === PHONE)
-    let user = await this.usersService.findByEmail(email);
-    if (!user && sendOptTo === VerificationTokenType.PHONE) {
-      user = await this.usersService.findOne({ where: { phone: email } });
-    }
+  async login({
+    identifier,
+    sendOptTo = VerificationTokenType.EMAIL,
+  }: LoginDto) {
+    // `identifier` peut être un email ou un téléphone : on résout le compte
+    // sur les deux colonnes. `sendOptTo` ne choisit que le canal de l'OTP.
+    const user = await this.usersService.findByIdentifier(identifier);
     if (!user) throw new UnauthorizedException('Invalid credentials');
-    if (sendOptTo === VerificationTokenType.EMAIL) {
-      return this.usersService.sendEmailOpt(user.id);
+    if (sendOptTo === VerificationTokenType.PHONE) {
+      return this.usersService.sendPhoneVerification(user.id);
     }
-    return this.usersService.sendPhoneVerification(user.id);
+    return this.usersService.sendEmailOpt(user.id);
   }
 
   async loginOpt({
     code,
     type,
-    email,
+    identifier,
   }: {
-    email: string;
+    identifier: string;
     code: string;
     type: VerificationTokenType;
   }) {
-    const user = await this.usersService.findByEmail(email);
-    await this.usersService.verifyOtpToken(email, code, type);
-    if (!user?.phoneVerifiedAt && type === VerificationTokenType.PHONE) {
+    const user = await this.usersService.findByIdentifier(identifier);
+    if (!user) throw new UnauthorizedException('Invalid credentials');
+    // L'OTP est vérifié par userId + canal : l'identifiant fourni peut être
+    // l'email même quand le code est reçu par SMS (cas de l'inscription).
+    await this.usersService.verifyOtpToken(user.id, code, type);
+    if (!user.phoneVerifiedAt && type === VerificationTokenType.PHONE) {
       this.usersService.updateById(user.id, { phoneVerifiedAt: new Date() });
     }
-    if (!user?.emailVerifiedAt && type === VerificationTokenType.EMAIL) {
+    if (!user.emailVerifiedAt && type === VerificationTokenType.EMAIL) {
       this.usersService.updateById(user.id, { emailVerifiedAt: new Date() });
     }
     return { user, ...(await this.signTokenPair(user.id)) };

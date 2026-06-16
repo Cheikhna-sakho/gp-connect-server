@@ -76,6 +76,18 @@ export class UsersService {
       include: USER_DEFAULT_INCLUDE,
     });
   }
+  /** Résout un compte par email (insensible à la casse) OU par téléphone. */
+  async findByIdentifier(identifier: string) {
+    return this.users.findFirst({
+      where: {
+        OR: [
+          { email: { equals: identifier, mode: 'insensitive' } },
+          { phone: identifier },
+        ],
+      },
+      include: USER_DEFAULT_INCLUDE,
+    });
+  }
   async find({ where }: Find) {
     return this.users.findFirst({ where, include: USER_DEFAULT_INCLUDE });
   }
@@ -131,7 +143,9 @@ export class UsersService {
       missionsAsShipper,
       packagesDelivered,
       totalEarned: Number(totalEarned._sum.amount ?? 0),
-      averageRating: ratings._avg.score ? Number(ratings._avg.score.toFixed(1)) : null,
+      averageRating: ratings._avg.score
+        ? Number(ratings._avg.score.toFixed(1))
+        : null,
       ratingsCount: ratings._count.score,
     };
   }
@@ -146,11 +160,14 @@ export class UsersService {
     });
   }
 
-  async updatePreferences(userId: string, data: Partial<{
-    notifySms: boolean;
-    notifyEmail: boolean;
-    notifyPush: boolean;
-  }>) {
+  async updatePreferences(
+    userId: string,
+    data: Partial<{
+      notifySms: boolean;
+      notifyEmail: boolean;
+      notifyPush: boolean;
+    }>,
+  ) {
     return this.databaseService.userPreferences.upsert({
       where: { userId },
       create: { userId, ...data },
@@ -240,14 +257,14 @@ export class UsersService {
   }
 
   async verifyOtpToken(
-    email: string,
+    userId: string,
     token: string,
     type: VerificationTokenType,
   ) {
     const now = new Date();
     const record = await this.verificationToken.findFirst({
       where: {
-        user: { email: { mode: 'insensitive', equals: email } },
+        userId,
         type,
         usedAt: null,
         expiresAt: { gt: now },
@@ -255,7 +272,6 @@ export class UsersService {
       select: {
         userId: true,
         tokenHash: true,
-        user: { select: { phoneVerifiedAt: true, emailVerifiedAt: true } },
       },
     });
     if (!record) throw new UnauthorizedException('Token expired.');

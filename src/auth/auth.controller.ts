@@ -67,8 +67,18 @@ function setAuthCookies(
 }
 
 function clearAuthCookies(res: Response) {
-  res.clearCookie('at', { path: '/' });
-  res.clearCookie('rt', { path: '/' });
+  // Pour qu'un navigateur supprime un cookie, le Set-Cookie d'effacement doit
+  // porter les mêmes attributs que la pose. En cross-site (prod), un cookie
+  // sans `SameSite=None; Secure` est tout simplement ignoré : le clear était
+  // alors sans effet et `rt` survivait → reconnexion auto après logout.
+  const clearOptions = {
+    httpOnly: true,
+    secure: IS_PROD,
+    sameSite: SAME_SITE,
+    path: '/',
+  };
+  res.clearCookie('at', clearOptions);
+  res.clearCookie('rt', clearOptions);
 }
 
 @Public()
@@ -82,7 +92,6 @@ export class AuthController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @Throttle(AUTH_THROTTLE)
   login(@Body() data: LoginDto) {
-    console.log({ data });
     return this.authService.login(data);
   }
 
@@ -102,11 +111,11 @@ export class AuthController {
     {
       code,
       type,
-      email,
-    }: { email: string; code: string; type: VerificationTokenType },
+      identifier,
+    }: { identifier: string; code: string; type: VerificationTokenType },
   ) {
     const { user, accessToken, refreshToken } = await this.authService.loginOpt(
-      { email, code, type },
+      { identifier, code, type },
     );
     setAuthCookies(res, accessToken, refreshToken);
     return user;
