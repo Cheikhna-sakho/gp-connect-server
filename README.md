@@ -71,3 +71,37 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](LICENSE).
+
+---
+
+# Journal des modifications
+
+> Rapport des changements récents (sécurité, validation, cohérence des flux).
+> Daté en absolu. Les points marqués _(client)_ ont une contrepartie dans le repo `client/`.
+
+## 2026-06-16
+
+### 🔐 Auth — déconnexion : plus de reconnexion automatique
+- Le refresh transparent (intercepteur 401) pouvait **ressusciter la session pendant le logout** : si une requête tombait en 401 pile au moment de la déconnexion, `refresh()` repouvait un cookie `at` alors que `rt` était encore présent.
+- Ajout d'un garde `beginLogout()` qui coupe le refresh dès que la déconnexion est engagée. _(client : `axiosConfig`, `auth.service`)_
+
+### 🔐 Auth — login OTP par identifiant (email **ou** téléphone)
+- Le champ `email` transportait aussi le numéro de téléphone → confusion **et bug** : la vérification OTP par SMS échouait (`findByEmail(phone)` → `null`).
+- Renommage `email` → `identifier`. Le compte est résolu sur les deux colonnes (`findByIdentifier`), l'OTP est vérifié par **`userId` + canal** (`verifyOtpToken` prend désormais un `userId`). `sendOptTo`/`type` ne désignent plus que le **canal** d'envoi, pas la nature de l'identifiant. _(client : `auth.api`, écrans login/otp/register)_
+
+### 🧹 Annonces — suppression de la colonne morte `weight`
+- La colonne `weight` (table `advertisements`) n'était jamais écrite (toujours 0). La capacité est portée par `maxWeight`, le consommé est calculé (`cumulatedWeight`), le restant = `maxWeight − cumulatedWeight`.
+- Migration `drop_advertisement_weight` + retrait du champ de l'entity/seeder. `maxWeight` rendu optionnel (défaut DB `0`), déduplication du DTO. _(client : type `Advertisement`)_
+
+### 🔐 Users — corrections de sécurité (module `users`)
+1. **Élévation de privilège** : `role` retiré de `CreateUserDto` (inscription forcée en `SHIPPER`) et le self-update passe par `UpdateProfileDto` restreint (`role` borné à `SHIPPER|CARRIER`, jamais `ADMIN`). `UpdateUserDto` complet réservé à la route admin.
+2. **Contournement de vérification (KYC)** : `emailVerifiedAt` / `phoneVerifiedAt` / `idCardVerifiedAt` ne sont plus settables par l'utilisateur (sortis du DTO self) — empêche d'auto-débloquer les offres transporteur.
+3. **Fuite de PII** : `GET /users/:id` (public) sérialise désormais `PublicUserEntity` — plus d'email/téléphone/timestamps de vérification, seulement identité d'affichage + `trust`/`profileCompletion` agrégés.
+4. **Upload avatar borné** : limite 5 Mo + allowlist MIME image (anti DoS mémoire / upload arbitraire), 400 si aucun fichier.
+
+> ⏳ **À traiter (reporté)** — changement d'email/téléphone : aujourd'hui le `*VerifiedAt` n'est pas réinitialisé à la modif → statut « vérifié » périmé. Flux strict (re-vérification OTP avant application) à concevoir.
+
+### ✅ Validation — durcissement DTOs
+- `ValidationPipe` : ajout de `transform: true`.
+- `CreateOfferDto` (messages) : `price` et `weight` typés `@IsNumber`/`@Type(Number)` + bornes (`@Min(0)`, `@IsPositive`).
+- `CreatePackageDto` : `weight` aligné sur le contrat client (nombre `> 0`, `≤ 1000` kg) au lieu de `@IsNumberString`.
