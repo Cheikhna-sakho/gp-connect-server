@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -23,14 +24,34 @@ import { ID_PARAM, SetIdParam } from 'src/common/constants/route.util.const';
 import { GetUserId } from 'src/common/decorators/user.decorator';
 import { Serialize } from 'src/common/decorators/serialize.decorator';
 import { UserEntity } from './entities/user.entity';
+import { PublicUserEntity } from './entities/public-user.entity';
 import { UserStatsEntity } from './entities/user-stats.entity';
 import { UserPreferencesEntity } from './entities/user-preferences.entity';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { MediaEntity } from 'src/medias/entities/media.entity';
 import { UpdateUserDto } from './dtos/update-user-dto';
+import { UpdateProfileDto } from './dtos/update-profile.dto';
 import { UpdatePreferencesDto } from './dtos/update-preferences.dto';
 import { AddressEntity } from 'src/addresses/entities/addresses.entity';
+
+// Upload avatar : borne la taille (mémoire) et restreint aux images.
+const AVATAR_MAX_BYTES = 5 * 1024 * 1024; // 5 Mo
+const AVATAR_UPLOAD_OPTIONS = {
+  storage: memoryStorage(),
+  limits: { fileSize: AVATAR_MAX_BYTES },
+  fileFilter: (
+    _req: unknown,
+    file: Express.Multer.File,
+    cb: (error: Error | null, accept: boolean) => void,
+  ) => {
+    if (/^image\/(jpe?g|png|webp|gif|avif)$/.test(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new BadRequestException('Format image non supporté'), false);
+    }
+  },
+};
 
 @Controller('users')
 export class UsersController {
@@ -40,7 +61,7 @@ export class UsersController {
 
   @Public()
   @Get(ID_PARAM)
-  @Serialize(UserEntity)
+  @Serialize(PublicUserEntity)
   async getOneUser(@Param('id') id: UUID) {
     const user = await this.usersService.findOne({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
@@ -55,8 +76,9 @@ export class UsersController {
 
   @Post('avatar')
   @Serialize(MediaEntity)
-  @UseInterceptors(FileInterceptor('avatar', { storage: memoryStorage() }))
+  @UseInterceptors(FileInterceptor('avatar', AVATAR_UPLOAD_OPTIONS))
   avatar(@GetUserId() id: UUID, @UploadedFile() avatar: Express.Multer.File) {
+    if (!avatar) throw new BadRequestException('Aucun fichier fourni');
     return this.usersService.createAvatar(id, avatar);
   }
 
@@ -72,9 +94,11 @@ export class UsersController {
     return this.usersService.sendEmailVerification(id);
   }
 
+  // Mise à jour de SON propre compte : DTO restreint (pas de role=ADMIN,
+  // pas de *VerifiedAt, pas de password/id/timestamps).
   @Patch()
   @HttpCode(HttpStatus.NO_CONTENT)
-  update(@GetUserId() id: UUID, @Body() data: UpdateUserDto) {
+  update(@GetUserId() id: UUID, @Body() data: UpdateProfileDto) {
     return this.usersService.updateById(id, data);
   }
 
@@ -144,7 +168,10 @@ export class UsersController {
 
   @Delete(`me/saved-addresses/${SetIdParam('addressId')}`)
   @HttpCode(HttpStatus.NO_CONTENT)
-  removeSavedAddress(@GetUserId() id: UUID, @Param('addressId') addressId: string) {
+  removeSavedAddress(
+    @GetUserId() id: UUID,
+    @Param('addressId') addressId: string,
+  ) {
     return this.usersService.removeSavedAddress(id, addressId);
   }
 }

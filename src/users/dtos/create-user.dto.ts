@@ -11,6 +11,7 @@ export class CreateUserDto
     'password',
     'firstName',
     'lastName',
-    'role',
+    // `role` volontairement exclu : un compte s'inscrit toujours en SHIPPER
+    // (défaut schéma). Le passage CARRIER se fait via PATCH /users (rôle borné).
   ])
   implements Prisma.UserCreateInput {}
