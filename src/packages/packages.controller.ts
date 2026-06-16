@@ -71,9 +71,12 @@ export class PackagesController {
 
   @Get(ID_PARAM)
   @Serialize(PackageEntity)
-  async getOne(@Param('id') id: UUID) {
+  async getOne(@GetUserId() userId: UUID, @Param('id') id: UUID) {
     const pkg = await this.packagesService.findBy({ id });
     if (!pkg) throw new NotFoundException('Package not found');
+    // Un colis n'est consultable que par son propriétaire ; les participants
+    // d'une mission passent par GET /packages/by-mission/:missionId.
+    if (pkg.ownerId !== userId) throw new ForbiddenException();
     return pkg;
   }
 
@@ -132,6 +135,14 @@ export class PackagesController {
     const pkg = await this.packagesService.findBy({ id });
     if (!pkg) throw new NotFoundException('Package not found');
     if (pkg.ownerId !== ownerId) throw new ForbiddenException();
+    // Un colis engagé dans une mission est figé : éditer le poids/nom
+    // désynchroniserait les termes négociés et la capacité de l'annonce
+    // (miroir de la règle du delete).
+    if (pkg.mission?.length) {
+      throw new BadRequestException(
+        'Cannot edit a package linked to a mission',
+      );
+    }
     return this.packagesService.update(id, data);
   }
 
