@@ -2,9 +2,11 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
+  NotFoundException,
   Param,
   Patch,
   Post,
@@ -123,8 +125,13 @@ export class AdvertisementsController {
     return this.advertisementsService.findBy({ id });
   }
 
+  // Les offres reçues sur une annonce ne sont visibles que par son auteur
+  // (sinon n'importe qui voyait les enchères/prix de tous les candidats).
   @Get(`${ID_PARAM}/offers`)
-  getOffers(@Param('id') id: UUID) {
+  async getOffers(@GetUserId() userId: string, @Param('id') id: UUID) {
+    const ad = await this.advertisementsService.findBy({ id });
+    if (!ad) throw new NotFoundException();
+    if (ad.authorId !== userId) throw new ForbiddenException();
     return this.advertisementsService.findOffers(id);
   }
 

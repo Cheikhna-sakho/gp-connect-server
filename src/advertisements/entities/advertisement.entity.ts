@@ -9,10 +9,8 @@ import {
   MISSION_DEFAULT_INCLUDE,
   MissionEntity,
 } from 'src/missions/entities/mission.entity';
-import {
-  USER_DEFAULT_INCLUDE,
-  UserEntity,
-} from 'src/users/entities/user.entity';
+import { USER_DEFAULT_INCLUDE } from 'src/users/entities/user.entity';
+import { PublicUserEntity } from 'src/users/entities/public-user.entity';
 
 export const ADVERTISEMENT_DEFAULT_INCLUDE = {
   author: { include: USER_DEFAULT_INCLUDE },
@@ -38,6 +36,16 @@ type Advertisement = Prisma.AdvertisementGetPayload<{
 type AdvertisementConversation = Prisma.ConversationGetPayload<
   typeof ADVERTISEMENT_CONVERSATION_INCLUDE
 >[];
+
+// Forme brute (source) des missions de l'annonce, pour dériver la capacité sans
+// exposer l'objet mission (PII / internes).
+type RawAdMission = {
+  status: $Enums.MissionStatus;
+  packages?: { package?: { weight?: unknown } }[];
+};
+const activeAdMissions = (obj: { missions?: RawAdMission[] }) =>
+  (obj.missions ?? []).filter((m) => m.status !== 'CANCELLED');
+
 export class AdvertisementEntity implements Advertisement {
   @Expose() id: string;
 
@@ -75,9 +83,12 @@ export class AdvertisementEntity implements Advertisement {
   @Expose()
   updatedAt: Date;
 
-  @Type(() => UserEntity)
+  // Vue publique : pas d'email/téléphone de l'auteur (annonce listée sans auth).
+  // Le type reste le payload Prisma (pour `implements`), `@Type` pilote la
+  // sérialisation vers la vue publique.
+  @Type(() => PublicUserEntity)
   @Expose()
-  author: UserEntity;
+  author: Advertisement['author'];
 
   @Type(() => AddressEntity)
   @Expose()
@@ -87,34 +98,34 @@ export class AdvertisementEntity implements Advertisement {
   @Expose()
   destination: AddressEntity;
 
-  @Expose()
-  @Type(() => MissionEntity)
+  // `missions` n'est PAS exposé : il porte des PII (recipientName/Phone) et des
+  // détails de mission qui n'ont rien à faire sur une annonce publique. On n'en
+  // dérive que des indicateurs de capacité agrégés ci-dessous (lus sur la source
+  // brute via @Transform — les missions ne quittent jamais le back).
   missions: MissionEntity[];
 
-  // Les missions annulées ne comptent pas dans la capacité/les colis affichés
-  private get activeMissions() {
-    return this.missions?.filter((m) => m.status !== 'CANCELLED');
-  }
+  @Expose()
+  @Transform(({ obj }: { obj: { missions?: RawAdMission[] } }) =>
+    activeAdMissions(obj).reduce(
+      (total, m) =>
+        total +
+        (m.packages ?? []).reduce(
+          (sum, mp) => sum + Number(mp.package?.weight ?? 0),
+          0,
+        ),
+      0,
+    ),
+  )
+  cumulatedWeight: number;
 
   @Expose()
-  get cumulatedWeight() {
-    return (
-      this.activeMissions?.reduce((total, { cumulatedWeight: weight }) => {
-        total += weight ?? 0;
-        return total;
-      }, 0) ?? 0
-    );
-  }
-
-  @Expose()
-  get packagesCount() {
-    return (
-      this.activeMissions?.reduce((total, { packagesCount: len }) => {
-        total += len ?? 0;
-        return total;
-      }, 0) ?? 0
-    );
-  }
+  @Transform(({ obj }: { obj: { missions?: RawAdMission[] } }) =>
+    activeAdMissions(obj).reduce(
+      (total, m) => total + (m.packages?.length ?? 0),
+      0,
+    ),
+  )
+  packagesCount: number;
 
   @Expose()
   @Transform(
@@ -132,7 +143,7 @@ export class AdvertisementEntity implements Advertisement {
           c.messages?.map(({ createdAt, ...m }) => ({
             ...m.offer,
             createdAt,
-            author: plainToInstance(UserEntity, m.author),
+            author: plainToInstance(PublicUserEntity, m.author),
           })),
         )
         ?.flat(),
@@ -140,7 +151,7 @@ export class AdvertisementEntity implements Advertisement {
   offers: {
     // replace by Entity and use type
     createdAt: Date;
-    author: UserEntity;
+    author: PublicUserEntity;
     id: string;
     price: Prisma.Decimal;
     weight: Prisma.Decimal;
