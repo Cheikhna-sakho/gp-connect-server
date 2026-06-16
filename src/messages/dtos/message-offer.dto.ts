@@ -1,9 +1,7 @@
 import { $Enums, Prisma } from '@prisma/client';
 import {
   IsOptional,
-  IsUUID,
   IsEmpty,
-  IsEnum,
   IsNumber,
   Min,
   IsPositive,
@@ -27,14 +25,16 @@ export class CreateOfferDto implements Prisma.MessageOfferUncheckedCreateInput {
   @IsPositive()
   weight: number;
 
-  @IsUUID()
-  @IsOptional()
+  // `status` et `missionId` ne sont JAMAIS settables par le client : une offre
+  // naît PENDING (défaut schéma), et le passage ACCEPTED/REJECTED + le lien
+  // mission sont pilotés côté serveur (OffersService) avec toute la logique
+  // métier (gate KYC, création mission/transaction, rejet des autres offres).
+  @IsEmpty()
   missionId: string;
 
   @IsEmpty()
   messageId: string;
 
-  @IsEnum($Enums.MessageOfferStatus)
-  @IsOptional()
+  @IsEmpty()
   status?: $Enums.MessageOfferStatus;
 }

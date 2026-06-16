@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DatabaseService } from 'src/database/database.service';
-import { UpdateOfferDto } from 'src/messages/dtos/message-offer-update.dto';
+import { UpdateOfferStatusDto } from './dto/update-offer-status.dto';
 
 @Injectable()
 export class OffersService {
@@ -37,7 +37,16 @@ export class OffersService {
     });
   }
 
-  async findLastAccepted(conversationId: string) {
+  async findLastAccepted(conversationId: string, userId: string) {
+    // Réservé aux participants de la conversation (sinon fuite du prix négocié).
+    const conversation = await this.databaseService.conversation.findFirst({
+      where: {
+        id: conversationId,
+        OR: [{ shipperId: userId }, { carrierId: userId }],
+      },
+      select: { id: true },
+    });
+    if (!conversation) throw new ForbiddenException();
     return this.offers.findFirst({
       where: { message: { conversationId }, status: 'ACCEPTED' },
       orderBy: { createdAt: 'desc' },
@@ -196,11 +205,13 @@ export class OffersService {
 
   // ─── Generic update (REJECTED, price/weight edits) ────────────────────────
 
-  async update(id: string, userId: string, data: UpdateOfferDto) {
+  async update(id: string, userId: string, data: UpdateOfferStatusDto) {
     if (data.status === 'ACCEPTED') {
       return this.accept(id, userId);
     }
 
+    // Seul autre cas autorisé : REJECTED. Le DTO ne laisse passer que le
+    // statut (ni price/weight/missionId) — pas de réécriture de l'offre.
     const offer = await this.offers.findUnique({
       where: { id },
       include: {
@@ -225,17 +236,17 @@ export class OffersService {
     if (userId !== shipperId && userId !== carrierId)
       throw new ForbiddenException();
 
-    if (
-      data.status &&
-      data.status !== 'PENDING' &&
-      offer.message.authorId === userId
-    ) {
+    // Le statut d'une offre est décidé par le contre-parti, pas par son auteur.
+    if (offer.message.authorId === userId) {
       throw new ForbiddenException(
         'Cannot change the status of your own offer',
       );
     }
 
-    const updated = await this.offers.update({ where: { id }, data });
+    const updated = await this.offers.update({
+      where: { id },
+      data: { status: data.status },
+    });
 
     this.eventEmitter.emit('offer.updated', {
       offer: updated,

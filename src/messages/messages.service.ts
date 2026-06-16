@@ -1,4 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { UUID } from 'crypto';
 import { DatabaseService } from 'src/database/database.service';
@@ -90,8 +94,22 @@ export class MessagesService {
     return this.offers.create({ data });
   }
 
-  updateOffer(id: string, data: UpdateOfferDto) {
-    return this.offers.update({ where: { id }, data });
+  // Édition des termes de SA propre offre (l'autorisation auteur est faite dans
+  // le contrôleur). On n'écrit QUE price/weight, et seulement tant que l'offre
+  // est PENDING : le statut/missionId passent par OffersService.
+  async updateOffer(id: string, data: UpdateOfferDto) {
+    const offer = await this.offers.findUnique({
+      where: { id },
+      select: { status: true },
+    });
+    if (!offer) throw new NotFoundException();
+    if (offer.status !== 'PENDING') {
+      throw new BadRequestException('This offer is no longer pending');
+    }
+    return this.offers.update({
+      where: { id },
+      data: { price: data.price, weight: data.weight },
+    });
   }
 
   async handleNewConversation() {}
