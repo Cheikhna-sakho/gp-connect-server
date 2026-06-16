@@ -53,10 +53,6 @@ export class AdvertisementEntity implements Advertisement {
   @Expose()
   maxWeight: Decimal;
 
-  @Type(() => Number)
-  @Expose()
-  weight: Decimal;
-
   @Expose() destinationId: string;
 
   @Expose() departureId: string;

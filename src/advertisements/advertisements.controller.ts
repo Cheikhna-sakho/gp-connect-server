@@ -54,6 +54,12 @@ export class AdvertisementsController {
       ...where
     }: AdvertisementQueryFindDto,
   ) {
+    // Exclure les annonces expirées (date d'arrivée passée). Si le client
+    // fournit aussi un filtre arrivalDate, on garde la borne la plus restrictive.
+    const now = new Date();
+    const arrivalFloor =
+      arrivalDate && new Date(arrivalDate) > now ? arrivalDate : now;
+
     const prismaWhere: Record<string, any> = {
       ...where,
       status: 'OPEN' as const,
@@ -61,8 +67,8 @@ export class AdvertisementsController {
       ...(price ? { price: { lte: price } } : {}),
       // "Poids min dispo" → annonces dont la capacité est ≥ à la valeur saisie
       ...(maxWeight ? { maxWeight: { gte: maxWeight } } : {}),
-      // Filtrer les annonces dont la date d'arrivée est >= date saisie
-      ...(arrivalDate ? { arrivalDate: { gte: arrivalDate } } : {}),
+      // Annonces dont la date d'arrivée est >= max(maintenant, date saisie)
+      arrivalDate: { gte: arrivalFloor },
       ...(departureCityName
         ? {
             departure: {

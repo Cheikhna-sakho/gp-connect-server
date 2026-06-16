@@ -392,7 +392,6 @@ model Advertisement {
   status        AdvertisementStatus @default(OPEN)
   price         Decimal             @default(0)
   maxWeight     Decimal             @default(0) @map("max_weight") @db.Decimal(7, 3)
-  weight        Decimal             @default(0) @map("weight") @db.Decimal(7, 3)
   destinationId String              @map("destination_id")
   departureId   String              @map("departure_id")
   authorId      String              @map("author_id")

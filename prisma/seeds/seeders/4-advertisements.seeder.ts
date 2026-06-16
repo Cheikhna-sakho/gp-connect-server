@@ -31,7 +31,6 @@ export const seedAdvertisements = async (
       destinationId: addresses['Lyon-69001'],
       price: new Decimal(45),
       maxWeight: new Decimal(15),
-      weight: new Decimal(0),
       departureDate: future(3),
       arrivalDate: future(3),
     },
@@ -48,7 +47,6 @@ export const seedAdvertisements = async (
       destinationId: addresses['Marseille-13001'],
       price: new Decimal(65),
       maxWeight: new Decimal(20),
-      weight: new Decimal(0),
       departureDate: future(7),
       arrivalDate: future(7),
     },
@@ -65,7 +63,6 @@ export const seedAdvertisements = async (
       destinationId: addresses['Paris-75001'],
       price: new Decimal(35),
       maxWeight: new Decimal(10),
-      weight: new Decimal(0),
       departureDate: future(1),
       arrivalDate: future(1),
     },
@@ -82,7 +79,6 @@ export const seedAdvertisements = async (
       destinationId: addresses['Bordeaux-33000'],
       price: new Decimal(55),
       maxWeight: new Decimal(12),
-      weight: new Decimal(0),
       departureDate: future(5),
       arrivalDate: future(5),
     },
@@ -99,7 +95,6 @@ export const seedAdvertisements = async (
       destinationId: addresses['Paris-75001'],
       price: new Decimal(70),
       maxWeight: new Decimal(25),
-      weight: new Decimal(0),
       departureDate: future(4),
       arrivalDate: future(4),
     },
@@ -116,7 +111,6 @@ export const seedAdvertisements = async (
       destinationId: addresses['Lyon-69002'],
       price: new Decimal(40),
       maxWeight: new Decimal(8),
-      weight: new Decimal(0),
       departureDate: past(1),
       arrivalDate: future(1),
     },
@@ -135,7 +129,6 @@ export const seedAdvertisements = async (
       destinationId: addresses['Nantes-44000'],
       price: new Decimal(30),
       maxWeight: new Decimal(0),
-      weight: new Decimal(5),
       arrivalDate: future(10),
     },
   });
@@ -151,7 +144,6 @@ export const seedAdvertisements = async (
       destinationId: addresses['Lyon-69001'],
       price: new Decimal(25),
       maxWeight: new Decimal(0),
-      weight: new Decimal(3.5),
       arrivalDate: future(5),
     },
   });
@@ -167,7 +159,6 @@ export const seedAdvertisements = async (
       destinationId: addresses['Paris-75001'],
       price: new Decimal(40),
       maxWeight: new Decimal(0),
-      weight: new Decimal(8),
       arrivalDate: future(8),
     },
   });
@@ -179,7 +170,6 @@ export const seedAdvertisements = async (
     data: {
       name: 'Carton vêtements',
       description: 'Habits d\'été, fragile',
-      weight: new Decimal(2.5),
       ownerId: users.alice,
     },
   });
@@ -189,7 +179,6 @@ export const seedAdvertisements = async (
     data: {
       name: 'Colis Amazon',
       description: 'Électronique, bien emballer',
-      weight: new Decimal(1.2),
       ownerId: users.marc,
     },
   });
@@ -199,7 +188,6 @@ export const seedAdvertisements = async (
     data: {
       name: 'Livre cuisine',
       description: null,
-      weight: new Decimal(0.8),
       ownerId: users.sophie,
     },
   });
@@ -212,7 +200,6 @@ export const seedAdvertisements = async (
       data: {
         name: faker.commerce.productName(),
         description: faker.helpers.maybe(() => faker.commerce.productDescription(), { probability: 0.6 }),
-        weight: new Decimal(faker.number.float({ min: 0.3, max: 20, fractionDigits: 1 })),
         ownerId: owner,
       },
     });

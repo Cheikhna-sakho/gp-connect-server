@@ -56,8 +56,8 @@ export class AdvertisementQueryFindDto extends PartialType(AdvertisementDto) {
 
   // Sorting
   @IsOptional()
-  @IsIn(['price', 'arrivalDate', 'createdAt', 'weight', 'maxWeight'])
-  sortBy?: 'price' | 'arrivalDate' | 'createdAt' | 'weight' | 'maxWeight';
+  @IsIn(['price', 'arrivalDate', 'createdAt', 'maxWeight'])
+  sortBy?: 'price' | 'arrivalDate' | 'createdAt' | 'maxWeight';
 
   @IsOptional()
   @IsIn(['asc', 'desc'])
