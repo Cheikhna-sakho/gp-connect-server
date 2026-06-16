@@ -6,3 +6,5 @@ node_modules
 projet.md
 pgdata
 infra
+*.tmp.js
+memoire.md

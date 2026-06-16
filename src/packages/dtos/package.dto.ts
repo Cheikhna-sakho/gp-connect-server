@@ -4,10 +4,13 @@ import { DecimalJsLike } from '@prisma/client/runtime/library';
 import {
   IsEmpty,
   IsNotEmpty,
-  IsNumberString,
+  IsNumber,
+  IsPositive,
   IsOptional,
   IsString,
+  Max,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreatePackageDto implements Prisma.PackageUncheckedCreateInput {
   @IsNotEmpty()
@@ -18,8 +21,11 @@ export class CreatePackageDto implements Prisma.PackageUncheckedCreateInput {
   @IsString()
   description: string;
 
-  @IsNotEmpty()
-  @IsNumberString()
+  // Aligné sur le contrat client (zod) : nombre > 0, max 1000 kg
+  @IsNumber()
+  @Type(() => Number)
+  @IsPositive()
+  @Max(1000)
   weight: string | number | Prisma.Decimal | DecimalJsLike;
 
   @IsEmpty()

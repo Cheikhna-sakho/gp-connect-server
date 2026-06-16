@@ -1,16 +1,30 @@
 import { $Enums, Prisma } from '@prisma/client';
-import { IsOptional, IsUUID, IsEmpty, IsEnum } from 'class-validator';
+import {
+  IsOptional,
+  IsUUID,
+  IsEmpty,
+  IsEnum,
+  IsNumber,
+  Min,
+  IsPositive,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateOfferDto implements Prisma.MessageOfferUncheckedCreateInput {
   @IsEmpty()
   id: string;
 
-  //   @IsNumber()
+  // Prix proposé → alimente negotiatedPrice + transaction.amount à l'acceptation
   @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  @Min(0)
   price: number;
 
-  //   @IsNumber()
   @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  @IsPositive()
   weight: number;
 
   @IsUUID()
