@@ -15,6 +15,7 @@ export class ProofEntity implements MissionProof {
   @Expose() createdAt: Date;
 
   @Exclude() otpHash: string;
+  @Exclude() otpAttempts: number;
 
   @Expose()
   @Transform(

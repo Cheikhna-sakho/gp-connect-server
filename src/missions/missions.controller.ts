@@ -34,6 +34,7 @@ import { SerializePage } from 'src/common/decorators/serialize-page.decorator';
 import { MissionEntity } from './entities/mission.entity';
 import { ProofEntity } from 'src/proof/entities/proof.entity';
 import { ProofOtpEntity } from 'src/proof/entities/proof-otp.entity';
+import { VerifyProofDto } from 'src/proof/dtos/verify-proof.dto';
 import { PhoneService } from 'src/phone/phone.service';
 
 @Controller('missions')
@@ -174,7 +175,7 @@ export class MissionsController {
   async verifyPickUp(
     @GetUserId() verifiedById: UUID,
     @Param('id') missionId: string,
-    @Body() { code }: { code: string },
+    @Body() { code }: VerifyProofDto,
   ) {
     const mission = await this.missionsService.findOne(missionId as UUID);
     if (!mission) throw new NotFoundException();
@@ -194,7 +195,7 @@ export class MissionsController {
   async verifyDelivery(
     @GetUserId() verifiedById: UUID,
     @Param('id') missionId: string,
-    @Body() { code }: { code: string },
+    @Body() { code }: VerifyProofDto,
   ) {
     const mission = await this.missionsService.findOne(missionId as UUID);
     if (!mission) throw new NotFoundException();

@@ -15,6 +15,10 @@ import { MediasService } from 'src/medias/medias.service';
 export class ProofService {
   private proofs: DatabaseService['missionProof'];
 
+  // Verrouillage anti brute-force : au-delà, le code courant est gelé et le
+  // shipper doit en régénérer un nouveau.
+  static readonly MAX_OTP_ATTEMPTS = 5;
+
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly eventEmitter: EventEmitter2,
@@ -65,7 +69,12 @@ export class ProofService {
     await this.proofs.upsert({
       where: { missionId_type: { missionId: data.missionId, type: data.type } },
       create: { ...data, otpHash: hash, otpExpiresAt: expiresAt },
-      update: { otpHash: hash, otpExpiresAt: expiresAt, otpUsedAt: null },
+      update: {
+        otpHash: hash,
+        otpExpiresAt: expiresAt,
+        otpUsedAt: null,
+        otpAttempts: 0, // nouveau code → compteur d'essais remis à zéro
+      },
     });
 
     return { code: plain, expiresAt };
@@ -92,6 +101,11 @@ export class ProofService {
         'No proof found — ask the shipper to generate a code first',
       );
     }
+    if (!proof.otpHash) {
+      throw new BadRequestException(
+        'No code generated yet — ask the shipper to generate one',
+      );
+    }
     if (proof.otpUsedAt) {
       throw new BadRequestException('This code has already been used');
     }
@@ -103,9 +117,20 @@ export class ProofService {
     if (proof.verifiedById && proof.verifiedById !== verifiedById) {
       throw new ForbiddenException();
     }
+    if (proof.otpAttempts >= ProofService.MAX_OTP_ATTEMPTS) {
+      throw new BadRequestException(
+        'Too many attempts — ask the shipper to generate a new code',
+      );
+    }
 
     const isValid = await verifyOtp({ hash: proof.otpHash, plain: code });
-    if (!isValid) throw new BadRequestException('Invalid code');
+    if (!isValid) {
+      await this.proofs.update({
+        where: { id: proof.id },
+        data: { otpAttempts: { increment: 1 } },
+      });
+      throw new BadRequestException('Invalid code');
+    }
 
     return this.databaseService.$transaction(async (tx) => {
       await tx.missionProof.update({
