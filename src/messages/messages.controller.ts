@@ -49,7 +49,10 @@ export class MessagesController {
     @GetUserId() userId: UUID,
     @Param('conversationId') conversationId: UUID,
   ) {
-    const allowed = await this.conversationsService.isParticipant(conversationId, userId);
+    const allowed = await this.conversationsService.isParticipant(
+      conversationId,
+      userId,
+    );
     if (!allowed) throw new ForbiddenException();
     return this.messagesService.find({ conversationId });
   }
@@ -64,16 +67,19 @@ export class MessagesController {
     if (!allowed) throw new ForbiddenException();
 
     if (data.type === 'OFFER') {
-      const ad = await this.conversationsService.getAdvertisementForConversation(
-        data.conversationId,
-        authorId,
-      );
+      const ad =
+        await this.conversationsService.getAdvertisementForConversation(
+          data.conversationId,
+          authorId,
+        );
       if (!ad) throw new ForbiddenException();
       if (ad.arrivalDate < new Date()) {
         throw new BadRequestException('This advertisement has expired');
       }
       if (ad.status !== 'OPEN' && ad.status !== 'IN_PROGRESS') {
-        throw new BadRequestException('This advertisement is no longer available');
+        throw new BadRequestException(
+          'This advertisement is no longer available',
+        );
       }
     }
 
@@ -102,8 +108,12 @@ export class MessagesController {
     @Body('conversationId') conversationId: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
-    if (!conversationId) throw new BadRequestException('conversationId is required');
-    const allowed = await this.conversationsService.isParticipant(conversationId, authorId);
+    if (!conversationId)
+      throw new BadRequestException('conversationId is required');
+    const allowed = await this.conversationsService.isParticipant(
+      conversationId,
+      authorId,
+    );
     if (!allowed) throw new ForbiddenException();
     return this.messagesService.createMedia(authorId, conversationId, file);
   }
@@ -120,7 +130,7 @@ export class MessagesController {
     if (data.offer) return this.messagesService.updateOffer(id, data.offer);
     return this.messagesService.update({
       where: { id },
-      data: data as Omit<MessageUpdateDto, 'offer'>,
+      data: { content: data.content },
     });
   }
 

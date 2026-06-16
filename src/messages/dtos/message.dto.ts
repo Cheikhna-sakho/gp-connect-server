@@ -6,6 +6,7 @@ import {
   ValidateIf,
   ValidateNested,
   IsNotEmpty,
+  MaxLength,
 } from 'class-validator';
 import { Prisma, $Enums } from '@prisma/client';
 import { CreateOfferDto } from './message-offer.dto';
@@ -21,6 +22,7 @@ export class CreateMessageDto
   @IsForType('TEXT')
   @IsString()
   @IsNotEmpty()
+  @MaxLength(2000)
   content: string;
 
   @IsUUID()

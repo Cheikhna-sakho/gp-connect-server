@@ -1,6 +1,6 @@
 import { PickType } from '@nestjs/mapped-types';
 import { Prisma } from '@prisma/client';
-import { IsEmpty, IsOptional, IsUUID } from 'class-validator';
+import { IsEmpty, IsUUID } from 'class-validator';
 import { MissionDto } from 'src/missions/dtos/mission.dto';
 
 export class CreateConversationDto
@@ -14,7 +14,10 @@ export class CreateConversationDto
   @IsEmpty()
   carrierId: string;
 
-  @IsUUID()
-  @IsOptional()
+  // Dérivé côté serveur (mission-dossier de l'annonce pour SHIPPING, sinon
+  // nouvelle mission). Jamais fourni par le client : sinon on pourrait
+  // rattacher la conversation à une mission arbitraire et la détourner à
+  // l'acceptation d'une offre.
+  @IsEmpty()
   missionId: string;
 }

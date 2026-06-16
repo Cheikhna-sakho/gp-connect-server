@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { UUID } from 'crypto';
 import { DatabaseService } from 'src/database/database.service';
@@ -130,7 +130,20 @@ export class ConversationsService {
     });
   }
 
-  create({ packageIds, ...data }: CreateConversationDto) {
+  async create({ packageIds, ...data }: CreateConversationDto) {
+    // On ne rattache que des colis appartenant au shipper de la mission :
+    // sinon on pourrait lier les colis d'autrui à sa propre mission.
+    if (packageIds?.length) {
+      const owned = await this.databaseService.package.count({
+        where: { id: { in: packageIds }, ownerId: data.shipperId },
+      });
+      if (owned !== packageIds.length) {
+        throw new ForbiddenException(
+          'Some packages do not belong to the shipper',
+        );
+      }
+    }
+
     const missionRelation = data.missionId
       ? { connect: { id: data.missionId } }
       : {

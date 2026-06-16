@@ -8,7 +8,7 @@ import { Expose, Type } from 'class-transformer';
 import { AdvertisementEntity } from 'src/advertisements/entities/advertisement.entity';
 import { MessageEntity } from 'src/messages/entities/message.entity';
 import { MissionEntity } from 'src/missions/entities/mission.entity';
-import { UserEntity } from 'src/users/entities/user.entity';
+import { PublicUserEntity } from 'src/users/entities/public-user.entity';
 
 export class ConversationEntity implements Conversation {
   @Expose() id: string;
@@ -46,12 +46,14 @@ export class ConversationEntity implements Conversation {
     )[0];
   }
 
-  @Type(() => UserEntity)
+  // Vue publique : pas d'email/téléphone de l'autre partie (anti-fuite PII /
+  // désintermédiation). Le client n'affiche que nom + avatar + trust.
+  @Type(() => PublicUserEntity)
   @Expose()
   shipper: User;
   @Expose() shipperId: string;
 
-  @Type(() => UserEntity)
+  @Type(() => PublicUserEntity)
   @Expose()
   carrier: User;
   @Expose() carrierId: string;
