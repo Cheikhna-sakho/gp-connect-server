@@ -6,6 +6,7 @@ import { CreateRatingDto } from './dtos/create-rating.dto';
 import { Serialize } from 'src/common/decorators/serialize.decorator';
 import { RatingEntity } from './entities/rating.entity';
 import { SetIdParam } from 'src/common/constants/route.util.const';
+import { Public } from 'src/common/decorators/public.decorator';
 
 @Controller('ratings')
 export class RatingsController {
@@ -33,7 +34,9 @@ export class RatingsController {
     return this.ratingsService.findByUser(userId);
   }
 
-  // Public profile ratings for any user
+  // Avis du profil public d'un utilisateur (cohérent avec GET /users/:id et
+  // /users/:id/stats, eux aussi publics).
+  @Public()
   @Get(`user/${SetIdParam('userId')}`)
   getByUser(@Param('userId') userId: string) {
     return this.ratingsService.findByUser(userId);
