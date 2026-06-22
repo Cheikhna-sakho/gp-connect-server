@@ -12,6 +12,7 @@ import { SkipThrottle } from '@nestjs/throttler';
 import { IdentityService } from './identity.service';
 import { GetUserId } from 'src/common/decorators/user.decorator';
 import { Public } from 'src/common/decorators/public.decorator';
+import { SkipCsrf } from 'src/common/decorators/skip-csrf.decorator';
 import { UUID } from 'crypto';
 import { Request } from 'express';
 import { Serialize } from 'src/common/decorators/serialize.decorator';
@@ -36,6 +37,7 @@ export class IdentityController {
 
   @Public()
   @SkipThrottle()
+  @SkipCsrf()
   @Post('webhook')
   @HttpCode(HttpStatus.OK)
   webhook(

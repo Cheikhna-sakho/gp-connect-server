@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { PackagesModule } from './packages/packages.module';
 import { APP_GUARD } from '@nestjs/core';
 import { AuthenticateGuard } from './auth/guards/auth.guard';
+import { CsrfGuard } from './common/guards/csrf.guard';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AddressesModule } from './addresses/addresses.module';
 import { MissionsModule } from './missions/missions.module';
@@ -26,14 +27,14 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ChatModule } from './chat/chat.module';
 import { RatingsModule } from './ratings/ratings.module';
 import { DisputesModule } from './disputes/disputes.module';
+import { ReportsModule } from './reports/reports.module';
+import { BlocksModule } from './blocks/blocks.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     EventEmitterModule.forRoot({ global: true }),
-    ThrottlerModule.forRoot([
-      { name: 'default', ttl: 60_000, limit: 100 },
-    ]),
+    ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 100 }]),
     DatabaseModule,
     UsersModule,
     AdvertisementsModule,
@@ -54,10 +55,15 @@ import { DisputesModule } from './disputes/disputes.module';
     ChatModule,
     RatingsModule,
     DisputesModule,
+    ReportsModule,
+    BlocksModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
+    // CSRF en premier : rejette une requête cross-site (cookie de session +
+    // origine étrangère) avant tout traitement d'auth.
+    { provide: APP_GUARD, useClass: CsrfGuard },
     { provide: APP_GUARD, useClass: AuthenticateGuard },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
