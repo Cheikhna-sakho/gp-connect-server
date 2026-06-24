@@ -29,8 +29,11 @@ import {
   GoogleTokenDto,
 } from './dtos/oauth-token.dto';
 
-// Réutilisé sur plusieurs endpoints — déclenche envoi SMS/email
-const AUTH_THROTTLE = { default: { limit: 225, ttl: 60_000 } }; // LIMIT 5
+// Réutilisé sur plusieurs endpoints — déclenche un envoi SMS/email (payant).
+// Sécurisé par défaut (5/min) ; on peut le DESSERRER en local via
+// AUTH_THROTTLE_LIMIT (ex. tests). La prod garde la valeur sûre par défaut.
+const AUTH_THROTTLE_LIMIT = Number(process.env.AUTH_THROTTLE_LIMIT) || 5;
+const AUTH_THROTTLE = { default: { limit: AUTH_THROTTLE_LIMIT, ttl: 60_000 } };
 // Spécifique OTP : correspond à la durée de vie du code (15 min)
 const OTP_THROTTLE = { default: { limit: 5, ttl: 900_000 } };
 

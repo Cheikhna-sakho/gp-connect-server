@@ -9,7 +9,7 @@ import { UUID } from 'crypto';
 import { DatabaseService } from 'src/database/database.service';
 import { LoginDto } from './dtos/login.dto';
 import { OAuth2Client } from 'google-auth-library';
-import { createPublicKey, createVerify } from 'crypto';
+import { createHmac, createPublicKey, createVerify } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 
 type OAuthProfile = {
@@ -128,7 +128,11 @@ export class AuthService {
 
   // ─── Generic OAuth handler (shared by all providers) ──────────────────────
 
-  async validateOAuthLogin(profile: OAuthProfile, provider: AuthProvider) {
+  async validateOAuthLogin(
+    profile: OAuthProfile,
+    provider: AuthProvider,
+    emailVerified = false,
+  ) {
     const { providerUserId, email, firstName = '', lastName = '' } = profile;
 
     const userProvider = await this.providers.findUnique({
@@ -139,7 +143,19 @@ export class AuthService {
     let user = userProvider?.user;
 
     if (!user && email) {
-      user = await this.usersService.findOne({ where: { email } });
+      const existing = await this.usersService.findOne({ where: { email } });
+      if (existing) {
+        // Un compte existe déjà avec cet email. On ne le rattache à ce provider
+        // QUE si celui-ci atteste l'email vérifié : sinon un fournisseur tiers
+        // renvoyant un email arbitraire (ou un provider dont l'email n'est pas
+        // vérifié) permettrait une prise de contrôle du compte existant.
+        if (!emailVerified) {
+          throw new UnauthorizedException(
+            "Cet email est déjà associé à un compte. Connectez-vous avec votre méthode d'origine pour lier ce fournisseur.",
+          );
+        }
+        user = existing;
+      }
     }
 
     if (!user) {
@@ -148,7 +164,8 @@ export class AuthService {
           email: email ?? `${provider}-${providerUserId}@noemail.gpconnect`,
           firstName,
           lastName,
-          emailVerifiedAt: email ? new Date() : null,
+          // Ne marquer « vérifié » que si le provider l'atteste réellement.
+          emailVerifiedAt: email && emailVerified ? new Date() : null,
         },
       });
     }
@@ -177,6 +194,8 @@ export class AuthService {
         lastName: profile.name?.split(' ').slice(1).join(' '),
       },
       AuthProvider.GOOGLE,
+      // OAuth Google web : l'email du compte Google est vérifié par Google.
+      true,
     );
     const { accessToken, refreshToken } = await this.signTokenPair(user.id);
     return { user, accessToken, refreshToken };
@@ -187,6 +206,7 @@ export class AuthService {
   async validateGoogleToken(idToken: string) {
     let sub: string;
     let email: string | undefined;
+    let emailVerified = false;
     let givenName: string | undefined;
     let familyName: string | undefined;
 
@@ -199,6 +219,7 @@ export class AuthService {
       if (!payload) throw new Error('Empty payload');
       sub = payload.sub;
       email = payload.email;
+      emailVerified = payload.email_verified === true;
       givenName = payload.given_name;
       familyName = payload.family_name;
     } catch {
@@ -213,6 +234,7 @@ export class AuthService {
         lastName: familyName,
       },
       AuthProvider.GOOGLE,
+      emailVerified,
     );
     return { user, ...(await this.signTokenPair(user.id)) };
   }
@@ -238,6 +260,14 @@ export class AuthService {
     firstName?: string,
     lastName?: string,
   ) {
+    // Fail-closed : sans audience configurée, on refuse — sinon la vérification
+    // d'audience serait sautée et un token Apple émis pour une AUTRE app serait
+    // accepté (confused deputy → prise de compte).
+    const clientId = this.config.get('APPLE_CLIENT_ID');
+    if (!clientId) {
+      throw new UnauthorizedException('Apple login is not configured');
+    }
+
     const parts = identityToken.split('.');
     if (parts.length !== 3)
       throw new UnauthorizedException('Malformed Apple token');
@@ -245,14 +275,19 @@ export class AuthService {
     const header = JSON.parse(Buffer.from(parts[0], 'base64url').toString());
     const claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
 
+    // Algo épinglé à RS256 (défense en profondeur : la vérification force déjà
+    // RSA-SHA256, mais on refuse tout header qui prétendrait autre chose).
+    if (header.alg !== 'RS256') {
+      throw new UnauthorizedException('Unexpected Apple token algorithm');
+    }
     if (claims.iss !== 'https://appleid.apple.com') {
       throw new UnauthorizedException('Invalid Apple token issuer');
     }
     if (Date.now() / 1000 > claims.exp) {
       throw new UnauthorizedException('Apple token expired');
     }
-    const clientId = this.config.get('APPLE_CLIENT_ID');
-    if (clientId && claims.aud !== clientId) {
+    // Audience vérifiée INCONDITIONNELLEMENT (le token doit être émis pour NOUS).
+    if (claims.aud !== clientId) {
       throw new UnauthorizedException('Apple token audience mismatch');
     }
 
@@ -268,9 +303,14 @@ export class AuthService {
     if (!valid)
       throw new UnauthorizedException('Invalid Apple token signature');
 
+    // Apple transmet email_verified en booléen OU en chaîne "true".
+    const emailVerified =
+      claims.email_verified === true || claims.email_verified === 'true';
+
     const user = await this.validateOAuthLogin(
       { providerUserId: claims.sub, email: claims.email, firstName, lastName },
       AuthProvider.APPLE,
+      emailVerified,
     );
     return { user, ...(await this.signTokenPair(user.id)) };
   }
@@ -278,8 +318,39 @@ export class AuthService {
   // ─── Facebook — verify accessToken via Graph API ──────────────────────────
 
   async validateFacebookToken(accessToken: string) {
+    const appId = this.config.get('FACEBOOK_APP_ID');
+    const appSecret = this.config.get('FACEBOOK_APP_SECRET');
+    // Fail-closed : sans app id/secret, on ne peut pas vérifier que le token a
+    // été émis pour NOUS → on refuse plutôt que d'accepter un token arbitraire.
+    if (!appId || !appSecret) {
+      throw new UnauthorizedException('Facebook login is not configured');
+    }
+
+    // 1. Vérifier que le token a bien été émis pour NOTRE application (sinon un
+    // token valide d'une autre app Facebook authentifierait — confused deputy).
+    const debugUrl = `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(
+      accessToken,
+    )}&access_token=${appId}|${appSecret}`;
+    const debugRes = await fetch(debugUrl);
+    if (!debugRes.ok) throw new UnauthorizedException('Invalid Facebook token');
+    const debug = (await debugRes.json()) as {
+      data?: { app_id?: string; is_valid?: boolean };
+    };
+    if (!debug.data?.is_valid || String(debug.data.app_id) !== String(appId)) {
+      throw new UnauthorizedException(
+        'Facebook token was not issued for this app',
+      );
+    }
+
+    // 2. Récupérer le profil, protégé par appsecret_proof (empêche l'usage d'un
+    // token volé sans le secret de l'app).
+    const proof = createHmac('sha256', appSecret)
+      .update(accessToken)
+      .digest('hex');
     const fields = 'id,email,first_name,last_name';
-    const url = `https://graph.facebook.com/me?fields=${fields}&access_token=${encodeURIComponent(accessToken)}`;
+    const url = `https://graph.facebook.com/me?fields=${fields}&access_token=${encodeURIComponent(
+      accessToken,
+    )}&appsecret_proof=${proof}`;
 
     const res = await fetch(url);
     if (!res.ok) throw new UnauthorizedException('Invalid Facebook token');
@@ -305,6 +376,9 @@ export class AuthService {
         lastName: data.last_name,
       },
       AuthProvider.FACEBOOK,
+      // Le token est confirmé émis pour notre app ; l'email d'un compte
+      // Facebook est un email vérifié.
+      true,
     );
     return { user, ...(await this.signTokenPair(user.id)) };
   }
