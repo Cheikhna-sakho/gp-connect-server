@@ -4,6 +4,7 @@ import { ConversationsController } from './conversations.controller';
 import { DatabaseModule } from 'src/database/database.module';
 import { AdvertisementsModule } from 'src/advertisements/advertisements.module';
 import { MessagesModule } from 'src/messages/messages.module';
+import { BlocksModule } from 'src/blocks/blocks.module';
 
 @Module({
   providers: [ConversationsService],
@@ -11,6 +12,7 @@ import { MessagesModule } from 'src/messages/messages.module';
   imports: [
     DatabaseModule,
     AdvertisementsModule,
+    BlocksModule,
     forwardRef(() => MessagesModule),
   ],
   exports: [ConversationsService],

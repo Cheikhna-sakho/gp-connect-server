@@ -54,8 +54,10 @@ export class ConversationsController {
 
   @Get(ID_PARAM)
   @Serialize(ConversationEntity)
-  getById(@GetUserId() userId: UUID, @Param('id') id: UUID) {
-    return this.conversationsService.findOne(id, userId);
+  async getById(@GetUserId() userId: UUID, @Param('id') id: UUID) {
+    const conv = await this.conversationsService.findOne(id, userId);
+    if (!conv) throw new NotFoundException();
+    return conv;
   }
 
   @Post()
@@ -93,8 +95,6 @@ export class ConversationsController {
   @Delete(ID_PARAM)
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(@GetUserId() userId: UUID, @Param('id') id: UUID) {
-    const conv = await this.conversationsService.findOne(id, userId);
-    if (!conv) throw new ForbiddenException();
-    return this.conversationsService.delete(id);
+    await this.conversationsService.removeForUser(id, userId);
   }
 }

@@ -60,6 +60,10 @@ export class ConversationEntity implements Conversation {
 
   @Expose() missionId: string | null;
 
+  // État interne de soft delete — volontairement NON exposé au client.
+  shipperDeletedAt: Date | null;
+  carrierDeletedAt: Date | null;
+
   @Type(() => MissionEntity)
   @Expose()
   mission: MissionEntity;
