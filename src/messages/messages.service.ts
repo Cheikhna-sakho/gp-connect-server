@@ -39,6 +39,24 @@ export class MessagesService {
     return this.messages.findUnique({ where: { id } });
   }
 
+  // Un nouveau message « réveille » la conversation : met à jour le dernier
+  // message et annule tout soft delete (elle réapparaît pour qui l'avait
+  // masquée). Si elle était DELETED des deux côtés, elle redevient ACTIVE.
+  private async touchConversation(
+    db: Prisma.TransactionClient,
+    conversationId: string,
+    lastMessageAt: Date,
+  ) {
+    await db.conversation.update({
+      where: { id: conversationId },
+      data: { lastMessageAt, shipperDeletedAt: null, carrierDeletedAt: null },
+    });
+    await db.conversation.updateMany({
+      where: { id: conversationId, status: 'DELETED' },
+      data: { status: 'ACTIVE' },
+    });
+  }
+
   async create({ offer, ...data }: Omit<CreateMessageDto, 'advertisementId'>) {
     const message = await this.messages.create({
       data: {
@@ -47,10 +65,11 @@ export class MessagesService {
       },
       include: { offer: true },
     });
-    await this.databaseService.conversation.update({
-      where: { id: data.conversationId },
-      data: { lastMessageAt: message.createdAt },
-    });
+    await this.touchConversation(
+      this.databaseService,
+      data.conversationId,
+      message.createdAt,
+    );
     this.eventEmitter.emit('message.created', {
       message,
       conversationId: data.conversationId,
@@ -76,10 +95,7 @@ export class MessagesService {
           },
           include: { medias: { include: { media: true } } },
         });
-        await tx.conversation.update({
-          where: { id: conversationId },
-          data: { lastMessageAt: msg.createdAt },
-        });
+        await this.touchConversation(tx, conversationId, msg.createdAt);
         return msg;
       });
       this.eventEmitter.emit('message.created', { message, conversationId });

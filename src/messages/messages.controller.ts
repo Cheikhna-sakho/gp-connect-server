@@ -65,22 +65,17 @@ export class MessagesController {
       authorId,
     );
     if (!allowed) throw new ForbiddenException();
+    await this.conversationsService.assertNotBlocked(
+      data.conversationId,
+      authorId,
+    );
 
     if (data.type === 'OFFER') {
-      const ad =
-        await this.conversationsService.getAdvertisementForConversation(
-          data.conversationId,
-          authorId,
-        );
-      if (!ad) throw new ForbiddenException();
-      if (ad.arrivalDate < new Date()) {
-        throw new BadRequestException('This advertisement has expired');
-      }
-      if (ad.status !== 'OPEN' && ad.status !== 'IN_PROGRESS') {
-        throw new BadRequestException(
-          'This advertisement is no longer available',
-        );
-      }
+      await this.conversationsService.assertOfferAllowed(
+        data.conversationId,
+        authorId,
+        data.offer?.weight,
+      );
     }
 
     return this.messagesService.create({ ...data, authorId });
@@ -115,6 +110,7 @@ export class MessagesController {
       authorId,
     );
     if (!allowed) throw new ForbiddenException();
+    await this.conversationsService.assertNotBlocked(conversationId, authorId);
     return this.messagesService.createMedia(authorId, conversationId, file);
   }
 
