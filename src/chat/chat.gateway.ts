@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { Logger, UsePipes, ValidationPipe } from '@nestjs/common';
 import {
   ConnectedSocket,
   MessageBody,
@@ -14,11 +14,10 @@ import { Server, Socket } from 'socket.io';
 import { jwtConstants } from 'src/auth/constants';
 import { JwtPayload } from 'src/auth/types/jwt.type';
 import { DatabaseService } from 'src/database/database.service';
-import { MessagesService } from 'src/messages/messages.service';
-import { CreateMessageDto } from 'src/messages/dtos/message.dto';
 
 export type AuthenticatedSocket = Socket & { data: { userId: string } };
 
+@UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
 @WebSocketGateway({
   cors: {
     origin: process.env.FRONTEND_URL ?? 'http://localhost:3000',
@@ -33,7 +32,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     private readonly jwtService: JwtService,
     private readonly db: DatabaseService,
-    private readonly messagesService: MessagesService,
   ) {}
 
   // ─── Connection lifecycle ─────────────────────────────────────────────────
@@ -51,10 +49,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const raw =
         cookieToken ??
         client.handshake.auth?.token ??
-        client.handshake.headers?.authorization ?? '';
+        client.handshake.headers?.authorization ??
+        '';
       const token = raw.replace(/^Bearer\s+/i, '');
 
       if (!token) throw new Error('No token');
+
+      // CSWSH : une connexion authentifiée par le cookie (credential ambient)
+      // depuis une origine tierce = hijacking. On refuse si l'auth vient du
+      // cookie ET que l'Origin est présente mais étrangère. Les clients natifs
+      // (sans Origin) ou Bearer (non-ambient) ne sont pas concernés.
+      const origin = client.handshake.headers?.origin;
+      const allowedOrigin = process.env.FRONTEND_URL ?? 'http://localhost:3000';
+      if (cookieToken && origin && origin !== allowedOrigin) {
+        throw new Error('Cross-site WebSocket blocked');
+      }
 
       const payload = this.jwtService.verify<JwtPayload>(token, {
         secret: jwtConstants.ACCESS_TOKEN_PUBLIC,
@@ -91,7 +100,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
 
     if (!allowed) {
-      client.emit('error', { message: 'Not a participant of this conversation' });
+      client.emit('error', {
+        message: 'Not a participant of this conversation',
+      });
       return;
     }
 
@@ -109,31 +120,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return { event: 'left', data: { conversationId } };
   }
 
-  // ─── Send message via WebSocket ───────────────────────────────────────────
-
-  @SubscribeMessage('message:send')
-  async handleMessageSend(
-    @ConnectedSocket() client: AuthenticatedSocket,
-    @MessageBody() data: CreateMessageDto,
-  ) {
-    const userId = client.data.userId;
-
-    // Verify participant before saving
-    const inRoom = client.rooms.has(data.conversationId);
-    if (!inRoom) {
-      client.emit('error', { message: 'Join the conversation first' });
-      return;
-    }
-
-    const message = await this.messagesService.create({
-      ...data,
-      authorId: userId as any,
-    });
-
-    // Broadcast to the room (handled by @OnEvent listener below,
-    // but we also return ACK to the sender immediately)
-    return { event: 'message:sent', data: message };
-  }
+  // La persistance des messages passe exclusivement par REST (POST /messages),
+  // seul point d'entrée qui applique toutes les gardes métier. Le gateway ne
+  // sert qu'au temps réel (rooms, typing, broadcast).
 
   // ─── Typing indicators ────────────────────────────────────────────────────
 
@@ -142,6 +131,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: AuthenticatedSocket,
     @MessageBody() { conversationId }: { conversationId: string },
   ) {
+    // N'émettre que vers une room que l'on a effectivement rejointe (donc dont
+    // on est participant, cf. handleJoin) : évite le spoof d'indicateur typing.
+    if (!client.rooms.has(conversationId)) return;
     client.to(conversationId).emit('typing', {
       userId: client.data.userId,
       conversationId,
@@ -154,6 +146,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: AuthenticatedSocket,
     @MessageBody() { conversationId }: { conversationId: string },
   ) {
+    if (!client.rooms.has(conversationId)) return;
     client.to(conversationId).emit('typing', {
       userId: client.data.userId,
       conversationId,
@@ -165,9 +158,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @OnEvent('message.created')
   broadcastNewMessage(payload: { message: any; conversationId: string }) {
-    this.server
-      .to(payload.conversationId)
-      .emit('message:new', payload.message);
+    this.server.to(payload.conversationId).emit('message:new', payload.message);
   }
 
   @OnEvent('offer.updated')
