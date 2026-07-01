@@ -28,7 +28,7 @@ import { MissionQuery } from './dtos/mission-query.dto';
 import { ProofService } from 'src/proof/proof.service';
 import { MissionPackagesDto } from './dtos/mission-packages.dto';
 import { ID_PARAM, SetIdParam } from 'src/common/constants/route.util.const';
-import { MissionPartial } from './dtos/mission-partial.dto';
+import { UpdateMissionDto } from './dtos/update-mission.dto';
 import { Serialize } from 'src/common/decorators/serialize.decorator';
 import { SerializePage } from 'src/common/decorators/serialize-page.decorator';
 import { MissionEntity } from './entities/mission.entity';
@@ -83,9 +83,12 @@ export class MissionsController {
     const mission = await this.missionsService.findOne(missionId as UUID);
     if (!mission) throw new NotFoundException();
     if (mission.shipperId !== userId) throw new ForbiddenException();
-    if (!['PENDING', 'ACCEPTED'].includes(mission.status)) {
+    // Le périmètre (colis) est figé dès qu'un transporteur a accepté : il a
+    // négocié un prix pour CE lot. En ajouter après changerait le deal sans son
+    // accord → ajout autorisé uniquement tant que la mission est PENDING.
+    if (mission.status !== 'PENDING') {
       throw new BadRequestException(
-        'Cannot add packages once the mission is in transit',
+        'Packages can only be added before a carrier accepts the mission',
       );
     }
     const owned = await this.missionsService.verifyPackagesOwnership(
@@ -165,6 +168,13 @@ export class MissionsController {
       }
     }
 
+    // Le destinataire a reçu le code → on ne le renvoie PAS à l'expéditeur :
+    // sinon il pourrait auto-confirmer la livraison sans remise réelle. On ne
+    // retombe sur l'affichage côté expéditeur que s'il n'y a pas de
+    // destinataire joignable (il transmettra alors le code lui-même).
+    if (sentToRecipient) {
+      return { expiresAt: otp.expiresAt, sentToRecipient };
+    }
     return { ...otp, sentToRecipient };
   }
 
@@ -292,7 +302,7 @@ export class MissionsController {
   async update(
     @GetUserId() userId: UUID,
     @Param('id') id: UUID,
-    @Body() data: MissionPartial,
+    @Body() data: UpdateMissionDto,
   ) {
     const mission = await this.missionsService.findOne(id as UUID);
     if (!mission) throw new NotFoundException();
@@ -306,6 +316,14 @@ export class MissionsController {
     if (data.status && !MANUAL_ALLOWED.includes(data.status)) {
       throw new BadRequestException(
         `Cannot manually set status to ${data.status}. This happens automatically.`,
+      );
+    }
+    // Une mission en litige ne peut PAS être annulée unilatéralement par une
+    // partie : sa sortie passe par la résolution admin (PATCH /disputes/:id),
+    // sinon on court-circuiterait l'arbitrage et le litige resterait OPEN.
+    if (data.status === 'CANCELLED' && mission.status === 'DISPUTED') {
+      throw new ForbiddenException(
+        'A mission under dispute can only be resolved by support',
       );
     }
     // carrierId is set exclusively via offer acceptance — never manually
@@ -352,6 +370,13 @@ export class MissionsController {
     const mission = await this.missionsService.findOne(missionId as UUID);
     if (!mission) throw new NotFoundException();
     if (mission.shipperId !== userId) throw new ForbiddenException();
+    // Miroir de l'ajout : le périmètre est figé une fois le transporteur engagé
+    // (et a fortiori après ramassage) — sinon désync des colis déjà PICKED_UP.
+    if (mission.status !== 'PENDING') {
+      throw new BadRequestException(
+        'Packages can only be removed before a carrier accepts the mission',
+      );
+    }
     return this.missionsService.removePackage(missionId, packageId);
   }
 }

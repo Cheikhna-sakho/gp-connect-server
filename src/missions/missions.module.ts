@@ -10,5 +10,6 @@ import { PhoneModule } from 'src/phone/phone.module';
   providers: [MissionsService],
   controllers: [MissionsController],
   imports: [DatabaseModule, ProofModule, OffersModule, PhoneModule],
+  exports: [MissionsService],
 })
 export class MissionsModule {}

@@ -1,11 +1,11 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
-  AdvertisementStatus,
-  Mission,
-  MissionStatus,
-  Prisma,
-} from '@prisma/client';
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { AdvertisementStatus, MissionStatus, Prisma } from '@prisma/client';
 import { UUID } from 'crypto';
 import { DatabaseService } from 'src/database/database.service';
 import { CreateMissionDto } from './dtos/create-mission.dto';
@@ -15,27 +15,17 @@ import {
   MISSION_DETAIL_INCLUDE,
 } from './entities/mission.entity';
 import { USER_DEFAULT_INCLUDE } from 'src/users/entities/user.entity';
-import { MissionPartial } from './dtos/mission-partial.dto';
-const getSelectFields = <T extends string>(fields: T[]) => {
-  return fields.reduce(
-    (selectedFields, field) => {
-      selectedFields[field] = true;
-      return selectedFields;
-    },
-    {} as Record<T, true>,
-  );
-};
-const getMissionFields = <
-  T extends keyof Mission | keyof Prisma.MissionInclude,
->(
-  s: T[],
-) => getSelectFields(s);
-const MISSION_WITH_ALL_FIELDS = getMissionFields([
-  'advertisement',
-  'transaction',
-  'packages',
-  'shipper',
-]);
+import { UpdateMissionDto } from './dtos/update-mission.dto';
+// Vue admin complète. `packages` doit inclure le `package` imbriqué : le getter
+// `cumulatedWeight` de MissionEntity lit `packages[].package.weight` et crasherait
+// (500) sur un simple `packages: true` (lignes de jointure sans le package).
+const MISSION_WITH_ALL_FIELDS = {
+  advertisement: true,
+  transaction: true,
+  packages: { select: { package: true } },
+  shipper: true,
+  carrier: true,
+} satisfies Prisma.MissionInclude;
 @Injectable()
 export class MissionsService {
   private missions: DatabaseService['mission'];
@@ -104,6 +94,22 @@ export class MissionsService {
   }
   async create(data: CreateMissionDto) {
     const { advertisementId, packageIds, shipperId } = data;
+    // L'annonce doit exister (sinon `connect` lève P2025 → 500).
+    const advertisement = await this.databaseService.advertisement.findUnique({
+      where: { id: advertisementId },
+      select: { id: true },
+    });
+    if (!advertisement) throw new NotFoundException('Advertisement not found');
+    // Les colis rattachés doivent appartenir au shipper (sinon IDOR : lier les
+    // colis d'autrui à sa mission, les lire et les verrouiller). Miroir d'addPackages.
+    if (packageIds?.length) {
+      const owned = await this.verifyPackagesOwnership(packageIds, shipperId);
+      if (!owned) {
+        throw new ForbiddenException(
+          'One or more packages do not belong to you',
+        );
+      }
+    }
     const joinFields = {
       packages:
         undefined as Prisma.MissionPackageCreateNestedManyWithoutMissionInput,
@@ -136,14 +142,14 @@ export class MissionsService {
   }
 
   async removePackage(missionId: string, packageId: string) {
-    return this.missionPackages.delete({
-      where: {
-        missionId_packageId: { missionId, packageId },
-      },
+    // Idempotent : retirer un colis non lié ne doit pas 500
+    // (Prisma.delete lève P2025 si la ligne n'existe pas).
+    await this.missionPackages.deleteMany({
+      where: { missionId, packageId },
     });
   }
 
-  async update(id: UUID, data: MissionPartial) {
+  async update(id: UUID, data: UpdateMissionDto) {
     if (data.status) {
       await this.validateStatusTransition(
         id as string,
@@ -154,52 +160,69 @@ export class MissionsService {
     const mission = await this.missions.update({ where: { id }, data });
 
     if (data.status) {
-      const adStatus: AdvertisementStatus | null =
-        data.status === 'ACCEPTED'
-          ? AdvertisementStatus.IN_PROGRESS
-          : data.status === 'IN_TRANSIT'
-            ? AdvertisementStatus.IN_PROGRESS
-            : data.status === 'COMPLETED'
-              ? AdvertisementStatus.COMPLETED
-              : data.status === 'CANCELLED'
-                ? AdvertisementStatus.OPEN
-                : null;
-
-      if (adStatus) {
-        await this.databaseService.advertisement.update({
-          where: { id: mission.advertisementId },
-          data: { status: adStatus },
-        });
-      }
-
-      if (data.status === 'CANCELLED') {
-        await this.databaseService.transaction.updateMany({
-          where: { missionId: mission.id, status: 'PENDING' },
-          data: { status: 'CANCELLED' },
-        });
-      }
-
-      // Auto-archive conversations when mission ends
-      if (data.status === 'COMPLETED' || data.status === 'CANCELLED') {
-        await this.databaseService.conversation.updateMany({
-          where: { missionId: mission.id },
-          data: { status: 'ARCHIVED' },
-        });
-      }
-
-      // Broadcast mission status change to all linked conversation rooms
-      const conversations = await this.databaseService.conversation.findMany({
-        where: { missionId: mission.id },
-        select: { id: true },
-      });
-      this.eventEmitter.emit('mission.status-changed', {
-        missionId: mission.id,
+      await this.applyStatusSideEffects({
+        id: mission.id,
+        advertisementId: mission.advertisementId,
         status: mission.status,
-        conversationIds: conversations.map((c) => c.id),
       });
     }
 
     return mission;
+  }
+
+  /**
+   * Effets de bord d'un changement de statut de mission, partagés entre la
+   * transition standard (update) et la résolution de litige (DisputesService) :
+   * MAJ du statut de l'annonce, annulation des transactions en attente,
+   * archivage des conversations, et broadcast temps réel. À appeler APRÈS avoir
+   * persisté le nouveau statut de la mission.
+   */
+  async applyStatusSideEffects(mission: {
+    id: string;
+    advertisementId: string;
+    status: MissionStatus;
+  }) {
+    const adStatus: AdvertisementStatus | null =
+      mission.status === 'ACCEPTED' || mission.status === 'IN_TRANSIT'
+        ? AdvertisementStatus.IN_PROGRESS
+        : mission.status === 'COMPLETED'
+          ? AdvertisementStatus.COMPLETED
+          : mission.status === 'CANCELLED'
+            ? AdvertisementStatus.OPEN
+            : null;
+
+    if (adStatus) {
+      await this.databaseService.advertisement.update({
+        where: { id: mission.advertisementId },
+        data: { status: adStatus },
+      });
+    }
+
+    if (mission.status === 'CANCELLED') {
+      await this.databaseService.transaction.updateMany({
+        where: { missionId: mission.id, status: 'PENDING' },
+        data: { status: 'CANCELLED' },
+      });
+    }
+
+    // Auto-archive conversations when mission ends
+    if (mission.status === 'COMPLETED' || mission.status === 'CANCELLED') {
+      await this.databaseService.conversation.updateMany({
+        where: { missionId: mission.id },
+        data: { status: 'ARCHIVED' },
+      });
+    }
+
+    // Broadcast mission status change to all linked conversation rooms
+    const conversations = await this.databaseService.conversation.findMany({
+      where: { missionId: mission.id },
+      select: { id: true },
+    });
+    this.eventEmitter.emit('mission.status-changed', {
+      missionId: mission.id,
+      status: mission.status,
+      conversationIds: conversations.map((c) => c.id),
+    });
   }
 
   private async validateStatusTransition(id: string, next: MissionStatus) {
@@ -216,7 +239,9 @@ export class MissionsService {
       IN_TRANSIT: ['COMPLETED', 'DISPUTED'],
       COMPLETED: [],
       CANCELLED: [],
-      DISPUTED: ['CANCELLED', 'COMPLETED'],
+      // Sortie d'un litige réservée à l'admin (DisputesService.resolve écrit le
+      // statut en direct, hors de cette matrice) → aucune transition manuelle.
+      DISPUTED: [],
     };
 
     if (!allowed[mission.status].includes(next)) {
