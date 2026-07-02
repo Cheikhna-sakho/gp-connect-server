@@ -5,8 +5,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { AdvertisementStatus } from '@prisma/client';
 import { DatabaseService } from 'src/database/database.service';
+import { MissionsService } from 'src/missions/missions.service';
 import { CreateDisputeDto } from './dtos/create-dispute.dto';
 import { ResolveDisputeDto } from './dtos/resolve-dispute.dto';
 
@@ -14,7 +14,10 @@ import { ResolveDisputeDto } from './dtos/resolve-dispute.dto';
 export class DisputesService {
   private disputes: DatabaseService['missionDispute'];
 
-  constructor(private readonly db: DatabaseService) {
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly missionsService: MissionsService,
+  ) {
     this.disputes = this.db.missionDispute;
   }
 
@@ -23,7 +26,12 @@ export class DisputesService {
   async create(missionId: string, userId: string, data: CreateDisputeDto) {
     const mission = await this.db.mission.findUnique({
       where: { id: missionId },
-      select: { status: true, shipperId: true, carrierId: true },
+      select: {
+        status: true,
+        shipperId: true,
+        carrierId: true,
+        advertisementId: true,
+      },
     });
 
     if (!mission) throw new NotFoundException('Mission not found');
@@ -36,8 +44,9 @@ export class DisputesService {
       );
     }
 
+    let result: [Awaited<ReturnType<typeof this.disputes.create>>, unknown];
     try {
-      return await this.db.$transaction([
+      result = await this.db.$transaction([
         this.disputes.create({
           data: {
             missionId,
@@ -53,10 +62,22 @@ export class DisputesService {
       ]);
     } catch (e) {
       if (e?.code === 'P2002') {
-        throw new ConflictException('A dispute is already open for this mission');
+        throw new ConflictException(
+          'A dispute is already open for this mission',
+        );
       }
       throw e;
     }
+
+    // Effets de bord du passage en DISPUTED (broadcast temps réel notamment) —
+    // mutualisés avec MissionsService.
+    await this.missionsService.applyStatusSideEffects({
+      id: missionId,
+      advertisementId: mission.advertisementId,
+      status: 'DISPUTED',
+    });
+
+    return result;
   }
 
   // ─── Admin: list all open disputes ────────────────────────────────────────
@@ -65,9 +86,19 @@ export class DisputesService {
     return this.disputes.findMany({
       where: status ? { status } : undefined,
       include: {
-        openedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
+        openedBy: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
         resolvedBy: { select: { id: true, firstName: true, lastName: true } },
-        mission: { select: { id: true, status: true, shipperId: true, carrierId: true, advertisementId: true } },
+        mission: {
+          select: {
+            id: true,
+            status: true,
+            shipperId: true,
+            carrierId: true,
+            advertisementId: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -86,11 +117,6 @@ export class DisputesService {
       throw new BadRequestException('This dispute is already resolved');
     }
 
-    const adStatus: AdvertisementStatus =
-      data.missionOutcome === 'COMPLETED'
-        ? AdvertisementStatus.COMPLETED
-        : AdvertisementStatus.OPEN;
-
     const [updatedDispute] = await this.db.$transaction([
       this.disputes.update({
         where: { id },
@@ -105,16 +131,16 @@ export class DisputesService {
         where: { id: dispute.missionId },
         data: { status: data.missionOutcome },
       }),
-      this.db.advertisement.update({
-        where: { id: dispute.mission.advertisementId },
-        data: { status: adStatus },
-      }),
-      // Archive all conversations linked to this mission
-      this.db.conversation.updateMany({
-        where: { missionId: dispute.missionId },
-        data: { status: 'ARCHIVED' },
-      }),
     ]);
+
+    // MAJ annonce + annulation des transactions en attente + archivage des
+    // conversations + broadcast — mutualisés avec MissionsService (notamment
+    // l'annulation des transactions PENDING, oubliée dans l'ancienne version).
+    await this.missionsService.applyStatusSideEffects({
+      id: dispute.missionId,
+      advertisementId: dispute.mission.advertisementId,
+      status: data.missionOutcome,
+    });
 
     return updatedDispute;
   }
@@ -123,7 +149,10 @@ export class DisputesService {
 
   async findByMission(missionId: string, userId: string) {
     const mission = await this.db.mission.findFirst({
-      where: { id: missionId, OR: [{ shipperId: userId }, { carrierId: userId }] },
+      where: {
+        id: missionId,
+        OR: [{ shipperId: userId }, { carrierId: userId }],
+      },
       select: { id: true },
     });
     if (!mission) throw new ForbiddenException();

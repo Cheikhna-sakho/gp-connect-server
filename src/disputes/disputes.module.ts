@@ -2,9 +2,10 @@ import { Module } from '@nestjs/common';
 import { DisputesService } from './disputes.service';
 import { DisputesController } from './disputes.controller';
 import { DatabaseModule } from 'src/database/database.module';
+import { MissionsModule } from 'src/missions/missions.module';
 
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, MissionsModule],
   providers: [DisputesService],
   controllers: [DisputesController],
 })
