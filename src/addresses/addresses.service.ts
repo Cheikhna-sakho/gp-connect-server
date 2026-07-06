@@ -63,6 +63,41 @@ export class AddressesService {
 
   // ─── Address upsert ───────────────────────────────────────────────────────
 
+  // Écrit le point PostGIS `location` (utilisé par la recherche d'annonces par
+  // rayon, ST_DWithin). À appeler après toute écriture de latitude/longitude.
+  private async setLocation(id: string, latitude: number, longitude: number) {
+    await this.databaseService.$executeRaw`
+      UPDATE addresses
+      SET location = ST_SetSRID(ST_MakePoint(${Number(longitude)}, ${Number(latitude)}), 4326)::geography
+      WHERE id = ${id}
+    `;
+  }
+
+  /**
+   * Clé de déduplication d'une adresse :
+   *  - si on a des coordonnées → on déduplique dessus (= la clé unique réelle) ;
+   *  - sinon, sur l'identité textuelle COMPLÈTE (ville + rue + zip), et
+   *    uniquement si une rue est fournie — sinon « ville seule » matcherait
+   *    n'importe quelle adresse de la ville.
+   */
+  private dedupWhere(
+    cityId: string,
+    rest: { street?: string; zipCode?: string },
+    latitude?: number,
+    longitude?: number,
+  ): Prisma.AddressWhereInput | null {
+    if (latitude != null && longitude != null) {
+      return {
+        latitude: new Decimal(latitude).toDecimalPlaces(6),
+        longitude: new Decimal(longitude).toDecimalPlaces(6),
+      };
+    }
+    if (rest.street) {
+      return { cityId, street: rest.street, zipCode: rest.zipCode ?? null };
+    }
+    return null;
+  }
+
   async createIfNotExist<T extends Prisma.AddressSelect>(
     data: CreateFullAddressDto,
     returning?: T,
@@ -75,56 +110,32 @@ export class AddressesService {
     });
 
     const { latitude, longitude, ...rest } = addressDto;
+    const where = this.dedupWhere(cityId, rest, latitude, longitude);
 
-    const existing = await this.address.findFirst({
-      where: {
-        OR: [
-          { cityId, ...rest },
-          ...(latitude && longitude
-            ? [
-                {
-                  latitude: new Decimal(latitude).toDecimalPlaces(6),
-                  longitude: new Decimal(longitude).toDecimalPlaces(6),
-                },
-              ]
-            : []),
-        ],
-      },
-      select: returning,
-    });
-    if (existing) return existing;
+    if (where) {
+      const existing = await this.address.findFirst({
+        where,
+        select: returning,
+      });
+      if (existing) return existing;
+    }
 
     try {
       const created = await this.address.create({
         data: { ...addressDto, cityId },
         select: returning ?? ({ id: true } as T),
       });
-      if (latitude && longitude) {
-        await this.databaseService.$executeRaw`
-          UPDATE addresses
-          SET location = ST_SetSRID(ST_MakePoint(${Number(longitude)}, ${Number(latitude)}), 4326)::geography
-          WHERE id = ${(created as { id: string }).id}
-        `;
+      if (latitude != null && longitude != null) {
+        await this.setLocation(
+          (created as { id: string }).id,
+          latitude,
+          longitude,
+        );
       }
       return created as Prisma.AddressGetPayload<{ select: T }>;
     } catch (e) {
-      if (e?.code === 'P2002') {
-        return this.address.findFirst({
-          where: {
-            OR: [
-              { cityId, ...rest },
-              ...(latitude && longitude
-                ? [
-                    {
-                      latitude: new Decimal(latitude).toDecimalPlaces(6),
-                      longitude: new Decimal(longitude).toDecimalPlaces(6),
-                    },
-                  ]
-                : []),
-            ],
-          },
-          select: returning,
-        });
+      if (e?.code === 'P2002' && where) {
+        return this.address.findFirst({ where, select: returning });
       }
       throw e;
     }
@@ -133,7 +144,11 @@ export class AddressesService {
   // ─── Admin CRUD ───────────────────────────────────────────────────────────
 
   async create(data: CreateAddressDto) {
-    return this.address.create({ data });
+    const address = await this.address.create({ data });
+    if (data.latitude != null && data.longitude != null) {
+      await this.setLocation(address.id, data.latitude, data.longitude);
+    }
+    return address;
   }
 
   async update({
@@ -143,7 +158,14 @@ export class AddressesService {
     where: Prisma.AddressWhereUniqueInput;
     data: Prisma.AddressUpdateInput;
   }) {
-    return this.address.update({ where, data });
+    const address = await this.address.update({ where, data });
+    // Garder le point PostGIS cohérent quand l'admin modifie les coordonnées.
+    const lat = typeof data.latitude === 'number' ? data.latitude : undefined;
+    const lng = typeof data.longitude === 'number' ? data.longitude : undefined;
+    if (lat != null && lng != null) {
+      await this.setLocation(address.id, lat, lng);
+    }
+    return address;
   }
 
   async delete(id: UUID) {

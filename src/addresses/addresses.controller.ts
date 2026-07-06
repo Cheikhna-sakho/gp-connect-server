@@ -29,14 +29,7 @@ import { CityEntity } from './entities/city.entity';
 export class AddressesController {
   constructor(private readonly addressesService: AddressesService) {}
 
-  // ─── Public reads ─────────────────────────────────────────────────────────
-
-  @Public()
-  @Get()
-  @Serialize(AddressEntity)
-  getAll(@Query() where: AddressQueryFindDto) {
-    return this.addressesService.findAll(where);
-  }
+  // ─── City lookup — public (non-sensible, sert à l'autocomplétion) ─────────
 
   @Public()
   @Get('cities')
@@ -48,7 +41,21 @@ export class AddressesController {
     return this.addressesService.findCities(search, country);
   }
 
-  @Public()
+  // ─── Address reads — ADMIN only ───────────────────────────────────────────
+  // Les adresses portent de la PII (rue + coordonnées précises, ex. domiciles
+  // sauvegardés). On ne les expose pas publiquement : énumération réservée aux
+  // admins. Le flux normal crée les adresses via createIfNotExist (annonces).
+
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  @Get()
+  @Serialize(AddressEntity)
+  getAll(@Query() where: AddressQueryFindDto) {
+    return this.addressesService.findAll(where);
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
   @Get(ID_PARAM)
   @Serialize(AddressEntity)
   getById(@Param('id', ParseUUIDPipe) id: UUID) {
