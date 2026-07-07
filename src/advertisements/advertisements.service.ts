@@ -4,12 +4,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { AdvertisementStatus, Prisma } from '@prisma/client';
+import { plainToInstance } from 'class-transformer';
 import { DatabaseService } from 'src/database/database.service';
 import { CreateAdvertisementDto } from './dtos/create-advertisements.dto';
 import {
   ADVERTISEMENT_CONVERSATION_INCLUDE,
   ADVERTISEMENT_DEFAULT_INCLUDE,
 } from './entities/advertisement.entity';
+import { PublicUserEntity } from 'src/users/entities/public-user.entity';
 
 type Find = { where: Prisma.AdvertisementWhereInput };
 type FindOne = {
@@ -43,6 +45,16 @@ export class AdvertisementsService {
         ...ADVERTISEMENT_DEFAULT_INCLUDE,
         conversations: ADVERTISEMENT_CONVERSATION_INCLUDE,
       },
+    });
+  }
+
+  // Lecture publique : surtout PAS les conversations (sinon l'entity dérive et
+  // expose les offres + l'identité des enchérisseurs). Les offres restent
+  // réservées à l'auteur via findOffers (GET /:id/offers).
+  async findPublic(id: string) {
+    return this.advertisements.findUnique({
+      where: { id },
+      include: ADVERTISEMENT_DEFAULT_INCLUDE,
     });
   }
 
@@ -110,8 +122,11 @@ export class AdvertisementsService {
     return rows.map((r) => r.id);
   }
 
+  // Offres PENDING d'une annonce, réservées à l'auteur (ACL dans le contrôleur).
+  // Forme alignée sur l'ancien champ `offers` embarqué dans l'annonce, pour
+  // rester un drop-in côté front : { ...offer, createdAt, author }.
   async findOffers(advertisementId: string) {
-    return this.databaseService.messageOffer.findMany({
+    const offers = await this.databaseService.messageOffer.findMany({
       where: {
         status: 'PENDING',
         message: { conversation: { advertisementId } },
@@ -120,13 +135,19 @@ export class AdvertisementsService {
         message: {
           select: {
             createdAt: true,
-            authorId: true,
             author: { select: { id: true, firstName: true, lastName: true } },
           },
         },
       },
       orderBy: { createdAt: 'desc' },
     });
+    return offers.map(({ message, ...offer }) => ({
+      ...offer,
+      createdAt: message.createdAt,
+      author: plainToInstance(PublicUserEntity, message.author, {
+        excludeExtraneousValues: true,
+      }),
+    }));
   }
 
   async create(dto: CreateAdvertisementDto & { packageIds?: string[] }) {

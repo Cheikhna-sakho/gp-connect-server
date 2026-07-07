@@ -122,7 +122,8 @@ export class AdvertisementsController {
   @Get(ID_PARAM)
   @Serialize(AdvertisementEntity)
   getOne(@Param('id') id: UUID) {
-    return this.advertisementsService.findBy({ id });
+    // Vue publique sans conversations → pas de fuite des offres/enchérisseurs.
+    return this.advertisementsService.findPublic(id);
   }
 
   // Les offres reçues sur une annonce ne sont visibles que par son auteur
@@ -152,8 +153,8 @@ export class AdvertisementsController {
     }: AdvertisementQueryFindDto,
   ) {
     const prismaWhere = {
-      authorId,
       ...where,
+      authorId, // après le spread : non surchargeable par un ?authorId= en query
       ...(arrivalDate ? { arrivalDate: { gte: arrivalDate } } : {}),
       ...(departureCityName
         ? {

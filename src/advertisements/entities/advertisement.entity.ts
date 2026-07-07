@@ -1,10 +1,8 @@
 import { $Enums, AdvertisementStatus, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Expose, plainToInstance, Transform, Type } from 'class-transformer';
-import {
-  ADDRESS_DEFAULT_INCLUDE,
-  AddressEntity,
-} from 'src/addresses/entities/addresses.entity';
+import { ADDRESS_DEFAULT_INCLUDE } from 'src/addresses/entities/addresses.entity';
+import { PublicAddressEntity } from 'src/addresses/entities/public-address.entity';
 import {
   MISSION_DEFAULT_INCLUDE,
   MissionEntity,
@@ -90,13 +88,16 @@ export class AdvertisementEntity implements Advertisement {
   @Expose()
   author: Advertisement['author'];
 
-  @Type(() => AddressEntity)
+  // Vue publique des adresses : pas de coordonnées GPS précises (anti-géoloc).
+  // Le type reste le payload Prisma (pour `implements`), `@Type` pilote la
+  // sérialisation vers la vue publique.
+  @Type(() => PublicAddressEntity)
   @Expose()
-  departure: AddressEntity;
+  departure: Advertisement['departure'];
 
-  @Type(() => AddressEntity)
+  @Type(() => PublicAddressEntity)
   @Expose()
-  destination: AddressEntity;
+  destination: Advertisement['destination'];
 
   // `missions` n'est PAS exposé : il porte des PII (recipientName/Phone) et des
   // détails de mission qui n'ont rien à faire sur une annonce publique. On n'en
