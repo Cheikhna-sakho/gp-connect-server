@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Prisma, VerificationTokenType } from '@prisma/client';
@@ -101,7 +102,26 @@ export class UsersService {
   }
   async updateById(id: string, data: UpdateUserDto) {
     data.password &&= await this.hashPassword(data.password as string);
-    return this.users.update({ where: { id }, data });
+
+    // Changer d'email/téléphone invalide la vérification correspondante : le
+    // nouveau contact n'est pas prouvé. Sans ça, un statut « vérifié » (badge
+    // trust, canal OTP) survivrait sur un contact qu'on ne contrôle plus.
+    // On ne réinitialise que si la valeur change réellement.
+    const resets: Prisma.UserUpdateInput = {};
+    if (data.email !== undefined || data.phone !== undefined) {
+      const current = await this.users.findUnique({
+        where: { id },
+        select: { email: true, phone: true },
+      });
+      if (data.email !== undefined && data.email !== current?.email) {
+        resets.emailVerifiedAt = null;
+      }
+      if (data.phone !== undefined && data.phone !== current?.phone) {
+        resets.phoneVerifiedAt = null;
+      }
+    }
+
+    return this.users.update({ where: { id }, data: { ...data, ...resets } });
   }
   async delete(where: Delete) {
     this.users.delete(where);
@@ -186,6 +206,11 @@ export class UsersService {
   }
 
   async saveAddress(userId: string, addressId: string, label?: string) {
+    const address = await this.databaseService.address.findUnique({
+      where: { id: addressId },
+      select: { id: true },
+    });
+    if (!address) throw new NotFoundException('Address not found');
     const saved = await this.databaseService.savedAddress.upsert({
       where: { userId_addressId: { userId, addressId } },
       create: { userId, addressId, label },
@@ -195,9 +220,11 @@ export class UsersService {
     return saved.address;
   }
 
-  removeSavedAddress(userId: string, addressId: string) {
-    return this.databaseService.savedAddress.delete({
-      where: { userId_addressId: { userId, addressId } },
+  async removeSavedAddress(userId: string, addressId: string) {
+    // Idempotent : retirer une adresse non sauvegardée ne doit pas 500
+    // (Prisma.delete lève P2025 si la ligne n'existe pas → deleteMany ne lève rien).
+    await this.databaseService.savedAddress.deleteMany({
+      where: { userId, addressId },
     });
   }
   async getOptPayload(userId: string, type: VerificationTokenType) {
@@ -230,6 +257,7 @@ export class UsersService {
   }
 
   async verifyEmailToken(token: string) {
+    if (!token) throw new BadRequestException('Invalid token');
     const tokenHash = getHashFromToken(token);
     const now = new Date();
     const record = await this.verificationToken.findFirst({
