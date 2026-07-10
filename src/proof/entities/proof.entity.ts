@@ -20,7 +20,14 @@ export class ProofEntity implements MissionProof {
   @Expose()
   @Transform(
     ({ value }: { value?: ProofImageWithMedia[] }) =>
-      value?.map((pi) => pi.image.url) ?? [],
+      // `?.` : couvre un lien orphelin / média supprimé (sinon 500 sur `.url`).
+      value?.map((pi) => pi.image?.url).filter(Boolean) ?? [],
+    // toPlainOnly : ce transform réduit `[{image:{url}}]` → `[url]`. Sans lui il
+    // s'exécute AUSSI à la passe plainToInstance de la route, puis le
+    // ClassSerializerInterceptor global le rejoue sur le `string[]` déjà réduit
+    // (chaque élément est une string → `pi.image` undefined → `[]`, ou crash).
+    // En le limitant à la conversion vers plain, il ne tourne qu'une fois.
+    { toPlainOnly: true },
   )
   images: ProofImageWithMedia[];
 
