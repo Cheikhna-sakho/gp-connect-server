@@ -9,9 +9,16 @@ export class EmailService {
     private readonly config: ConfigService,
   ) {}
 
+  // Aucun email réel hors production-like : en dev on logge, en test (jest
+  // e2e) on n'envoie rien non plus — le parcours login y est joué pour de vrai.
+  private get isMailDisabled() {
+    const env = this.config.get('NODE_ENV');
+    return env === 'development' || env === 'test';
+  }
+
   async sendEmailVerification(to: string, token: string) {
     const url = `${process.env.FRONTEND_URL}/verify/email?token=${token}`;
-    if (this.config.get('NODE_ENV') === 'development') {
+    if (this.isMailDisabled) {
       console.log({ url });
       return url;
     }
@@ -47,7 +54,7 @@ export class EmailService {
         Votre mot de passe est : <strong>${token} </strong>
       <div>
     `;
-    if (this.config.get('NODE_ENV') === 'development') {
+    if (this.isMailDisabled) {
       console.log({ token });
       return;
     }
