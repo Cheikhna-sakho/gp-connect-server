@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Tests (unit + e2e)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # Base de test dédiée (créée + migrée + seedée par le globalSetup e2e)
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/gp_test
+      # Fournie pour les commandes Prisma CLI hors globalSetup (generate n'en a pas besoin, migrate/seed reçoivent TEST_DATABASE_URL)
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/gp_test
+      NODE_ENV: test
+      ACCESS_TOKEN_EXP: 15m
+      REFRESH_TOKEN_EXP: 7d
+      FRONTEND_URL: http://localhost:3000
+      # Creds factices : suffisent au boot de l'app (aucun appel réseau réel).
+      # CLOUDINARY_* volontairement absent → les uploads e2e se sautent proprement.
+      TWILIO_SID: AC00000000000000000000000000000000
+      TWILIO_AUTH_TOKEN: test_token
+      TWILIO_FROM: "+10000000000"
+      MAIL_HOST: localhost
+      MAIL_PORT: "587"
+      MAIL_USER: test
+      MAIL_PASS: test
+      MAIL_FROM: no-reply@test.local
+      STRIPE_SECRET_KEY: sk_test_dummy
+      STRIPE_WEBHOOK_SECRET_IDENTITY: whsec_dummy
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm exec prisma generate
+
+      - name: Generate ephemeral RS256 JWT keys
+        run: |
+          openssl genrsa -out at_priv.pem 2048
+          openssl rsa -in at_priv.pem -pubout -out at_pub.pem
+          openssl genrsa -out rt_priv.pem 2048
+          openssl rsa -in rt_priv.pem -pubout -out rt_pub.pem
+          set_multiline() { # $1=name $2=file
+            {
+              echo "$1<<__PEM_EOF__"
+              cat "$2"
+              echo "__PEM_EOF__"
+            } >> "$GITHUB_ENV"
+          }
+          set_multiline ACCESS_TOKEN_SECRET at_priv.pem
+          set_multiline ACCESS_TOKEN_PUBLIC at_pub.pem
+          set_multiline REFRESH_TOKEN_SECRET rt_priv.pem
+          set_multiline REFRESH_TOKEN_PUBLIC rt_pub.pem
+          rm -f at_priv.pem at_pub.pem rt_priv.pem rt_pub.pem
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: E2E tests (provisionne gp_test + migrate + seed)
+        run: pnpm run test:e2e
