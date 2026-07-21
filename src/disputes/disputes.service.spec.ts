@@ -43,10 +43,15 @@ describe('DisputesService', () => {
     const githubIssues = {
       createDisputeIssue: jest.fn().mockResolvedValue(undefined),
     };
+    const email = {
+      sendDisputeOpened: jest.fn(),
+      sendDisputeResolved: jest.fn(),
+    };
     service = new DisputesService(
       db as never,
       missionsService as never,
       githubIssues as never,
+      email as never,
     );
   });
 

@@ -11,6 +11,7 @@ import { MissionsService } from 'src/missions/missions.service';
 import { CreateDisputeDto } from './dtos/create-dispute.dto';
 import { ResolveDisputeDto } from './dtos/resolve-dispute.dto';
 import { GithubIssuesService } from './github-issues.service';
+import { EmailService } from 'src/email/email.service';
 
 @Injectable()
 export class DisputesService {
@@ -21,8 +22,37 @@ export class DisputesService {
     private readonly db: DatabaseService,
     private readonly missionsService: MissionsService,
     private readonly githubIssues: GithubIssuesService,
+    private readonly emailService: EmailService,
   ) {
     this.disputes = this.db.missionDispute;
+  }
+
+  /**
+   * Envoie un email à un utilisateur s'il existe et n'a pas coupé le canal
+   * (preferences.notifyEmail). Jamais bloquant pour le flux appelant.
+   */
+  private async emailUser(
+    userId: string | null | undefined,
+    send: (
+      email: string,
+      firstName: string | null,
+    ) => Promise<unknown> | unknown,
+  ) {
+    if (!userId) return;
+    try {
+      const user = await this.db.user.findUnique({
+        where: { id: userId },
+        select: {
+          email: true,
+          firstName: true,
+          preferences: { select: { notifyEmail: true } },
+        },
+      });
+      if (!user?.email || user.preferences?.notifyEmail === false) return;
+      await send(user.email, user.firstName);
+    } catch (err) {
+      this.logger.warn(`Email litige non envoyé: ${err}`);
+    }
   }
 
   // ─── Open a dispute — shipper or carrier ──────────────────────────────────
@@ -81,6 +111,17 @@ export class DisputesService {
       status: 'DISPUTED',
     });
 
+    // L'autre partie n'est pas forcément connectée : email d'information.
+    const otherPartyId =
+      userId === mission.shipperId ? mission.carrierId : mission.shipperId;
+    void this.emailUser(otherPartyId, (email, firstName) =>
+      this.emailService.sendDisputeOpened(email, {
+        firstName,
+        missionId,
+        reason: data.reason,
+      }),
+    );
+
     // Suivi équipe : une issue GitHub par litige (le toast « notre équipe a
     // été notifiée » devient vrai). Jamais bloquant pour l'ouverture.
     const [dispute] = result;
@@ -126,7 +167,16 @@ export class DisputesService {
   async resolve(id: string, adminId: string, data: ResolveDisputeDto) {
     const dispute = await this.disputes.findUnique({
       where: { id },
-      include: { mission: { select: { advertisementId: true, status: true } } },
+      include: {
+        mission: {
+          select: {
+            advertisementId: true,
+            status: true,
+            shipperId: true,
+            carrierId: true,
+          },
+        },
+      },
     });
 
     if (!dispute) throw new NotFoundException('Dispute not found');
@@ -158,6 +208,21 @@ export class DisputesService {
       advertisementId: dispute.mission.advertisementId,
       status: data.missionOutcome,
     });
+
+    // Les deux parties sont informées de l'issue du litige par email.
+    for (const partyId of [
+      dispute.mission.shipperId,
+      dispute.mission.carrierId,
+    ]) {
+      void this.emailUser(partyId, (email, firstName) =>
+        this.emailService.sendDisputeResolved(email, {
+          firstName,
+          missionId: dispute.missionId,
+          resolution: data.resolution,
+          missionOutcome: data.missionOutcome,
+        }),
+      );
+    }
 
     return updatedDispute;
   }

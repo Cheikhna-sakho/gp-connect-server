@@ -4,9 +4,10 @@ import { DisputesController } from './disputes.controller';
 import { DatabaseModule } from 'src/database/database.module';
 import { MissionsModule } from 'src/missions/missions.module';
 import { GithubIssuesService } from './github-issues.service';
+import { EmailModule } from 'src/email/email.module';
 
 @Module({
-  imports: [DatabaseModule, MissionsModule],
+  imports: [DatabaseModule, MissionsModule, EmailModule],
   providers: [DisputesService, GithubIssuesService],
   controllers: [DisputesController],
   exports: [DisputesService],
