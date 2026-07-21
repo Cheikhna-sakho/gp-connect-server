@@ -7,6 +7,9 @@ import { seedPackages } from './seeders/5-packages.seeder';
 import { seedScenarios } from './seeders/6-scenarios.seeder';
 
 const wipe = async () => {
+  await prismaClient.report.deleteMany();
+  await prismaClient.userBlock.deleteMany();
+  await prismaClient.missionDispute.deleteMany();
   await prismaClient.missionRating.deleteMany();
   await prismaClient.missionProofImage.deleteMany();
   await prismaClient.missionProof.deleteMany();
