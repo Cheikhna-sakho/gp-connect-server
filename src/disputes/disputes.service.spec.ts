@@ -40,7 +40,14 @@ describe('DisputesService', () => {
     missionsService = {
       applyStatusSideEffects: jest.fn().mockResolvedValue(undefined),
     };
-    service = new DisputesService(db as never, missionsService as never);
+    const githubIssues = {
+      createDisputeIssue: jest.fn().mockResolvedValue(undefined),
+    };
+    service = new DisputesService(
+      db as never,
+      missionsService as never,
+      githubIssues as never,
+    );
   });
 
   describe('create', () => {

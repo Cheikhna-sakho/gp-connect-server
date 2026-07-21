@@ -3,20 +3,24 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { DatabaseService } from 'src/database/database.service';
 import { MissionsService } from 'src/missions/missions.service';
 import { CreateDisputeDto } from './dtos/create-dispute.dto';
 import { ResolveDisputeDto } from './dtos/resolve-dispute.dto';
+import { GithubIssuesService } from './github-issues.service';
 
 @Injectable()
 export class DisputesService {
   private disputes: DatabaseService['missionDispute'];
+  private readonly logger = new Logger(DisputesService.name);
 
   constructor(
     private readonly db: DatabaseService,
     private readonly missionsService: MissionsService,
+    private readonly githubIssues: GithubIssuesService,
   ) {
     this.disputes = this.db.missionDispute;
   }
@@ -76,6 +80,19 @@ export class DisputesService {
       advertisementId: mission.advertisementId,
       status: 'DISPUTED',
     });
+
+    // Suivi équipe : une issue GitHub par litige (le toast « notre équipe a
+    // été notifiée » devient vrai). Jamais bloquant pour l'ouverture.
+    const [dispute] = result;
+    void this.githubIssues
+      .createDisputeIssue({
+        disputeId: dispute.id,
+        missionId,
+        reason: data.reason,
+        description: data.description,
+        openedBy: userId === mission.shipperId ? 'shipper' : 'carrier',
+      })
+      .catch((err) => this.logger.warn(`Issue litige non créée: ${err}`));
 
     return result;
   }
