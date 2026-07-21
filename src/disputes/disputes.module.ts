@@ -9,5 +9,6 @@ import { GithubIssuesService } from './github-issues.service';
   imports: [DatabaseModule, MissionsModule],
   providers: [DisputesService, GithubIssuesService],
   controllers: [DisputesController],
+  exports: [DisputesService],
 })
 export class DisputesModule {}

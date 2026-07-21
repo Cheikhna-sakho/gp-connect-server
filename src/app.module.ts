@@ -29,9 +29,12 @@ import { RatingsModule } from './ratings/ratings.module';
 import { DisputesModule } from './disputes/disputes.module';
 import { ReportsModule } from './reports/reports.module';
 import { BlocksModule } from './blocks/blocks.module';
+import { AdminPanelModule } from './admin/admin-panel.module';
 
 @Module({
   imports: [
+    // Back-office /admin — ne s'enregistre que si ADMIN_PANEL_PASSWORD est posé.
+    ...AdminPanelModule.forRoot(),
     ConfigModule.forRoot({ isGlobal: true }),
     EventEmitterModule.forRoot({ global: true }),
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 100 }]),
