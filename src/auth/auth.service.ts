@@ -119,6 +119,10 @@ export class AuthService {
   }
 
   async refreshToken(user: JwtPayload) {
+    // Le refresh token signé ne suffit pas : l'utilisateur doit toujours
+    // exister (compte supprimé → la session doit tomber, pas survivre 7 j).
+    const exists = await this.usersService.findOne({ where: { id: user.id } });
+    if (!exists) throw new UnauthorizedException();
     return { accessToken: await this.signAccessTokenJwt(user) };
   }
 

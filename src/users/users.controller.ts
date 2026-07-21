@@ -7,6 +7,7 @@ import {
   HttpCode,
   HttpStatus,
   NotFoundException,
+  UnauthorizedException,
   Param,
   Patch,
   Post,
@@ -70,8 +71,12 @@ export class UsersController {
 
   @Get('me')
   @Serialize(UserEntity)
-  getMe(@GetUserId() id: UUID) {
-    return this.usersService.findOne({ where: { id } });
+  async getMe(@GetUserId() id: UUID) {
+    // JWT valide mais utilisateur disparu (compte supprimé) → 401, pas un
+    // 200 vide : le front purge la session au lieu d'un état « connecté à vide ».
+    const user = await this.usersService.findOne({ where: { id } });
+    if (!user) throw new UnauthorizedException();
+    return user;
   }
 
   @Post('avatar')
