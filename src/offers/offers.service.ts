@@ -2,19 +2,23 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DatabaseService } from 'src/database/database.service';
+import { EmailService } from 'src/email/email.service';
 import { UpdateOfferStatusDto } from './dto/update-offer-status.dto';
 
 @Injectable()
 export class OffersService {
   private offers: DatabaseService['messageOffer'];
+  private readonly logger = new Logger(OffersService.name);
 
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly emailService: EmailService,
   ) {
     this.offers = this.databaseService.messageOffer;
   }
@@ -200,7 +204,40 @@ export class OffersService {
       conversationIds: [conversation.id],
     });
 
+    // Notification hors-app : l'auteur de l'offre n'est pas forcément connecté
+    // au moment de l'acceptation. Jamais bloquant pour la transaction.
+    void this.notifyOfferAccepted(
+      offer.message.authorId,
+      Number(offer.price),
+      missionId,
+    );
+
     return result;
+  }
+
+  private async notifyOfferAccepted(
+    authorId: string,
+    price: number,
+    missionId: string,
+  ) {
+    try {
+      const author = await this.databaseService.user.findUnique({
+        where: { id: authorId },
+        select: {
+          email: true,
+          firstName: true,
+          preferences: { select: { notifyEmail: true } },
+        },
+      });
+      if (!author?.email || author.preferences?.notifyEmail === false) return;
+      await this.emailService.sendOfferAccepted(author.email, {
+        firstName: author.firstName,
+        price,
+        missionId,
+      });
+    } catch (err) {
+      this.logger.warn(`Email d'acceptation non envoyé: ${err}`);
+    }
   }
 
   // ─── Generic update (REJECTED, price/weight edits) ────────────────────────

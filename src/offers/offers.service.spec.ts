@@ -67,7 +67,8 @@ describe('OffersService', () => {
   beforeEach(() => {
     db = makeDb();
     emitter = { emit: jest.fn() };
-    service = new OffersService(db as never, emitter as never);
+    const email = { sendOfferAccepted: jest.fn() };
+    service = new OffersService(db as never, emitter as never, email as never);
   });
 
   const acceptAsShipper = () =>

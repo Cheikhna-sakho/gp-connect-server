@@ -48,6 +48,42 @@ export class EmailService {
       html,
     });
   }
+  sendOfferAccepted(
+    to: string,
+    data: { firstName?: string | null; price: number; missionId: string },
+  ) {
+    const url = `${process.env.FRONTEND_URL}/missions?id=${data.missionId}`;
+    if (this.isMailDisabled) {
+      console.log({ offerAccepted: to, url });
+      return url;
+    }
+    const html = `
+      <div style="font-family:Arial, sans-serif;font-size:16px;color:#333;">
+        <p>Bonjour${data.firstName ? ` ${data.firstName}` : ''},</p>
+        <p>Bonne nouvelle : votre offre à <strong>${data.price} €</strong> a été acceptée.
+        La mission est prête — retrouvez les prochaines étapes (colis, codes de
+        remise) sur votre espace GPConnect.</p>
+
+        <a href="${url}"
+           style="display:inline-block;margin:20px 0;padding:10px 18px;
+                  background:#1a73e8;color:white;text-decoration:none;
+                  border-radius:6px;">
+          Voir la mission
+        </a>
+
+        <p>Ou copiez-collez le lien dans votre navigateur :</p>
+        <p>${url}</p>
+
+        <p>— L’équipe GPConnect</p>
+      </div>
+    `;
+    return this.mailerService.sendMail({
+      to,
+      subject: 'Votre offre a été acceptée 🎉',
+      html,
+    });
+  }
+
   sendEmailOpt(to: string, token: string) {
     const html = `
       <div>
