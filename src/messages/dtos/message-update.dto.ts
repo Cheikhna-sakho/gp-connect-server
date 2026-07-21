@@ -15,7 +15,8 @@ export class MessageUpdateDto {
   @IsOptional()
   @IsString()
   @IsNotEmpty()
-  @MaxLength(2000)
+  // Aligné sur le front (MAX_LENGTH, DiscussionForm.tsx).
+  @MaxLength(1000)
   content?: string;
 
   @IsOptional()

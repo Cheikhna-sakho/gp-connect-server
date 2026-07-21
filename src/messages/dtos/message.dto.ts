@@ -22,7 +22,9 @@ export class CreateMessageDto
   @IsForType('TEXT')
   @IsString()
   @IsNotEmpty()
-  @MaxLength(2000)
+  // Aligné sur le front (MAX_LENGTH, DiscussionForm.tsx) : le serveur
+  // garantit ce que l'UI promet — toute évolution doit changer les deux.
+  @MaxLength(1000)
   content: string;
 
   @IsUUID()
