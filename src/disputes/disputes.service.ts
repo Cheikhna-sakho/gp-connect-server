@@ -184,21 +184,28 @@ export class DisputesService {
       throw new BadRequestException('This dispute is already resolved');
     }
 
-    const [updatedDispute] = await this.db.$transaction([
-      this.disputes.update({
-        where: { id },
+    // Verrou optimiste : le WHERE porte le statut OPEN — si deux résolutions
+    // concourent, une seule écrit (count=1), l'autre reçoit le 400 au lieu
+    // d'écraser la première (le check-then-act ci-dessus laissait la fenêtre).
+    const updatedDispute = await this.db.$transaction(async (tx) => {
+      const { count } = await tx.missionDispute.updateMany({
+        where: { id, status: 'OPEN' },
         data: {
           status: 'RESOLVED',
           resolution: data.resolution,
           resolvedById: adminId,
           resolvedAt: new Date(),
         },
-      }),
-      this.db.mission.update({
+      });
+      if (count === 0) {
+        throw new BadRequestException('This dispute is already resolved');
+      }
+      await tx.mission.update({
         where: { id: dispute.missionId },
         data: { status: data.missionOutcome },
-      }),
-    ]);
+      });
+      return tx.missionDispute.findUnique({ where: { id } });
+    });
 
     // MAJ annonce + annulation des transactions en attente + archivage des
     // conversations + broadcast — mutualisés avec MissionsService (notamment

@@ -13,20 +13,36 @@ import { DisputesService } from './disputes.service';
 // (this.db.$transaction([op1, op2])), donc les opérations create/update sont
 // bien appelées pour construire le tableau.
 
-const makeDb = () => ({
-  missionDispute: {
-    create: jest.fn(),
-    findMany: jest.fn(),
-    findUnique: jest.fn(),
-    update: jest.fn(),
-  },
-  mission: {
-    findUnique: jest.fn(),
-    findFirst: jest.fn(),
-    update: jest.fn(),
-  },
-  $transaction: jest.fn().mockResolvedValue([{ id: 'd1' }, {}]),
-});
+const makeDb = () => {
+  // Client `tx` pour le style callback ($transaction(async (tx) => …), utilisé
+  // par resolve avec son verrou optimiste). create garde le style tableau.
+  const tx = {
+    missionDispute: {
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      findUnique: jest.fn().mockResolvedValue({ id: 'd1' }),
+    },
+    mission: { update: jest.fn() },
+  };
+  return {
+    missionDispute: {
+      create: jest.fn(),
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+      update: jest.fn(),
+    },
+    mission: {
+      findUnique: jest.fn(),
+      findFirst: jest.fn(),
+      update: jest.fn(),
+    },
+    $transaction: jest.fn(async (arg: unknown) =>
+      Array.isArray(arg)
+        ? [{ id: 'd1' }, {}]
+        : (arg as (t: typeof tx) => unknown)(tx),
+    ),
+    __tx: tx,
+  };
+};
 
 const p2002 = () => Object.assign(new Error('unique'), { code: 'P2002' });
 
@@ -164,7 +180,7 @@ describe('DisputesService', () => {
       expect(db.$transaction).not.toHaveBeenCalled();
     });
 
-    it('happy path : met à jour via $transaction et déclenche les effets missionOutcome', async () => {
+    it('happy path : verrou optimiste (updateMany WHERE OPEN) et effets missionOutcome', async () => {
       db.missionDispute.findUnique.mockResolvedValue({
         id: 'd1',
         status: 'OPEN',
@@ -174,18 +190,37 @@ describe('DisputesService', () => {
 
       const updated = await service.resolve('d1', 'admin', data);
 
-      expect(db.missionDispute.update).toHaveBeenCalled();
-      expect(db.mission.update).toHaveBeenCalledWith({
+      expect(db.__tx.missionDispute.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'd1', status: 'OPEN' } }),
+      );
+      expect(db.__tx.mission.update).toHaveBeenCalledWith({
         where: { id: 'm1' },
         data: { status: 'CANCELLED' },
       });
-      expect(db.$transaction).toHaveBeenCalled();
       expect(missionsService.applyStatusSideEffects).toHaveBeenCalledWith({
         id: 'm1',
         advertisementId: 'ad1',
         status: 'CANCELLED',
       });
       expect(updated).toEqual({ id: 'd1' });
+    });
+
+    it("course entre deux résolutions : le second updateMany ne touche rien → BadRequest, pas d'effets", async () => {
+      // Le check-then-act initial voit OPEN (les deux admins le voient)…
+      db.missionDispute.findUnique.mockResolvedValue({
+        id: 'd1',
+        status: 'OPEN',
+        missionId: 'm1',
+        mission: { advertisementId: 'ad1', status: 'DISPUTED' },
+      });
+      // …mais le verrou optimiste ne matche plus (résolu entre-temps).
+      db.__tx.missionDispute.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.resolve('d1', 'admin', data)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(db.__tx.mission.update).not.toHaveBeenCalled();
+      expect(missionsService.applyStatusSideEffects).not.toHaveBeenCalled();
     });
   });
 
