@@ -44,12 +44,13 @@ export class ConversationsController {
     @GetUserId() userId: UUID,
     @Param('advertisementId') advertisementId: UUID,
   ) {
-    const conv = await this.conversationsService.findByAdvertisement(
+    // Sonde « une conversation existe-t-elle déjà ? » : l'absence est une
+    // réponse nominale → 200 + null (même pattern que disputes/byMission),
+    // pas un 404 qui pollue les logs à chaque visite de détail d'annonce.
+    return this.conversationsService.findByAdvertisement(
       advertisementId,
       userId,
     );
-    if (!conv) throw new NotFoundException();
-    return conv;
   }
 
   @Get(ID_PARAM)
