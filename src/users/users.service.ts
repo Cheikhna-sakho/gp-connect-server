@@ -124,7 +124,9 @@ export class UsersService {
     return this.users.update({ where: { id }, data: { ...data, ...resets } });
   }
   async delete(where: Delete) {
-    this.users.delete(where);
+    // `return` obligatoire : sans lui la suppression partait sans être
+    // attendue — succès renvoyé même si la DB refusait.
+    return this.users.delete(where);
   }
 
   // ─── Stats ────────────────────────────────────────────────────────────────
@@ -243,7 +245,7 @@ export class UsersService {
   }
   async sendEmailVerification(userId: string) {
     const user = await this.users.findUnique({ where: { id: userId } });
-    if (user.emailVerifiedAt) return;
+    if (!user || user.emailVerifiedAt) return;
     const { hash, token } = generateEmailToken();
     await this.verificationToken.create({
       data: {

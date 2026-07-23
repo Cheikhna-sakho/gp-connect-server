@@ -17,6 +17,8 @@ const makeDb = () => ({
     findMany: jest.fn(),
     count: jest.fn(),
     update: jest.fn(),
+    updateMany: jest.fn(),
+    findUniqueOrThrow: jest.fn(),
     delete: jest.fn(),
   },
   missionPackage: {
@@ -28,6 +30,8 @@ const makeDb = () => ({
   package: { count: jest.fn() },
   transaction: { updateMany: jest.fn() },
   conversation: { updateMany: jest.fn(), findMany: jest.fn() },
+  // Style tableau : les writes sont déjà des promesses des mocks ci-dessus.
+  $transaction: jest.fn((ops: unknown[]) => Promise.all(ops)),
 });
 
 describe('MissionsService', () => {
@@ -154,7 +158,8 @@ describe('MissionsService', () => {
       ['DISPUTED', 'CANCELLED', false], // sortie réservée à l'admin
     ])('%s → %s : autorisé=%s', async (from, to, allowed) => {
       db.mission.findUnique.mockResolvedValue({ status: from });
-      db.mission.update.mockResolvedValue({
+      db.mission.updateMany.mockResolvedValue({ count: 1 });
+      db.mission.findUniqueOrThrow.mockResolvedValue({
         id: 'm1',
         advertisementId: 'ad1',
         status: to,
@@ -164,11 +169,25 @@ describe('MissionsService', () => {
       const call = service.update('m1' as never, { status: to } as never);
       if (allowed) {
         await expect(call).resolves.toBeDefined();
-        expect(db.mission.update).toHaveBeenCalled();
+        // Verrou optimiste : le write porte le statut de départ.
+        expect(db.mission.updateMany).toHaveBeenCalledWith(
+          expect.objectContaining({ where: { id: 'm1', status: from } }),
+        );
       } else {
         await expect(call).rejects.toBeInstanceOf(BadRequestException);
-        expect(db.mission.update).not.toHaveBeenCalled();
+        expect(db.mission.updateMany).not.toHaveBeenCalled();
       }
+    });
+
+    it('transition concurrente (count 0) → BadRequest, pas d’effets de bord', async () => {
+      db.mission.findUnique.mockResolvedValue({ status: 'PENDING' });
+      db.mission.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.update('m1' as never, { status: 'CANCELLED' } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(db.advertisement.update).not.toHaveBeenCalled();
+      expect(emitter.emit).not.toHaveBeenCalled();
     });
 
     it("sans status : persiste sans déclencher d'effets de bord", async () => {

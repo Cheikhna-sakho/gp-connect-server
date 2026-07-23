@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { UserIdentityProvider, UserIdentityStatus } from '@prisma/client';
 import { DatabaseService } from 'src/database/database.service';
@@ -40,7 +36,10 @@ export class IdentityService {
   async getStatus(userId: string) {
     return this.userIdentity.findUnique({
       where: {
-        userId_provider: { userId, provider: UserIdentityProvider.STRIPE_IDENTITY },
+        userId_provider: {
+          userId,
+          provider: UserIdentityProvider.STRIPE_IDENTITY,
+        },
       },
       select: { status: true, reason: true, createdAt: true, updatedAt: true },
     });
@@ -48,7 +47,12 @@ export class IdentityService {
 
   async createVerificationSession(userId: string) {
     const existing = await this.userIdentity.findUnique({
-      where: { userId_provider: { userId, provider: UserIdentityProvider.STRIPE_IDENTITY } },
+      where: {
+        userId_provider: {
+          userId,
+          provider: UserIdentityProvider.STRIPE_IDENTITY,
+        },
+      },
       select: { status: true },
     });
 
@@ -79,7 +83,9 @@ export class IdentityService {
   }
 
   async handleWebhook(rawBody: Buffer, signature: string | undefined) {
-    const webhookSecret = this.config.get<string>('STRIPE_WEBHOOK_SECRET_IDENTITY');
+    const webhookSecret = this.config.get<string>(
+      'STRIPE_WEBHOOK_SECRET_IDENTITY',
+    );
 
     if (!webhookSecret) {
       this.logger.error('STRIPE_WEBHOOK_SECRET_IDENTITY is not configured');
@@ -88,7 +94,11 @@ export class IdentityService {
 
     let event: Stripe.Event;
     try {
-      event = this.stripe.webhooks.constructEvent(rawBody, signature!, webhookSecret);
+      event = this.stripe.webhooks.constructEvent(
+        rawBody,
+        signature!,
+        webhookSecret,
+      );
     } catch (err: any) {
       this.logger.error('Webhook signature verification failed', err.message);
       throw new BadRequestException('Invalid webhook signature');
@@ -102,16 +112,41 @@ export class IdentityService {
     const userId = session.metadata?.userId;
 
     if (!userId) {
-      this.logger.warn(`Verification session ${session.id} has no userId in metadata`);
+      this.logger.warn(
+        `Verification session ${session.id} has no userId in metadata`,
+      );
       return { received: true };
     }
 
     if (event.type === 'identity.verification_session.verified') {
-      await this.upsertStatus({ status: UserIdentityStatus.VERIFIED, providerId: session.id, userId });
-      await this.databaseService.user.update({
-        where: { id: userId },
-        data: { idCardVerifiedAt: new Date() },
-      });
+      // Atomique : identité VERIFIED sans idCardVerifiedAt laisserait le
+      // gating KYC (OffersService.accept) bloquer un transporteur vérifié.
+      // (upsert inliné : une méthode async ne renvoie pas un PrismaPromise
+      // utilisable dans un $transaction en style tableau.)
+      await this.databaseService.$transaction([
+        this.userIdentity.upsert({
+          where: {
+            userId_provider: {
+              userId,
+              provider: UserIdentityProvider.STRIPE_IDENTITY,
+            },
+          },
+          update: {
+            status: UserIdentityStatus.VERIFIED,
+            providerId: session.id,
+          },
+          create: {
+            userId,
+            provider: UserIdentityProvider.STRIPE_IDENTITY,
+            status: UserIdentityStatus.VERIFIED,
+            providerId: session.id,
+          },
+        }),
+        this.databaseService.user.update({
+          where: { id: userId },
+          data: { idCardVerifiedAt: new Date() },
+        }),
+      ]);
     } else if (event.type === 'identity.verification_session.requires_input') {
       await this.upsertStatus({
         status: UserIdentityStatus.REQUIRES_INPUT,
@@ -144,9 +179,18 @@ export class IdentityService {
   }) {
     return this.userIdentity.upsert({
       where: {
-        userId_provider: { userId, provider: UserIdentityProvider.STRIPE_IDENTITY },
+        userId_provider: {
+          userId,
+          provider: UserIdentityProvider.STRIPE_IDENTITY,
+        },
       },
-      create: { userId, provider: UserIdentityProvider.STRIPE_IDENTITY, status, providerId, reason },
+      create: {
+        userId,
+        provider: UserIdentityProvider.STRIPE_IDENTITY,
+        status,
+        providerId,
+        reason,
+      },
       update: { status, providerId, reason },
     });
   }

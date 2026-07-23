@@ -49,8 +49,10 @@ export class ReportsService {
     });
     if (!report) throw new NotFoundException('Report not found');
 
-    return this.db.report.update({
-      where: { id },
+    // Verrou optimiste : seule la première résolution écrit (deux admins
+    // concurrents → la seconde reçoit un 400 au lieu d'écraser la première).
+    const { count } = await this.db.report.updateMany({
+      where: { id, status: 'OPEN' },
       data: {
         status: data.status,
         resolution: data.resolution,
@@ -58,5 +60,9 @@ export class ReportsService {
         reviewedAt: new Date(),
       },
     });
+    if (count === 0) {
+      throw new BadRequestException('Report already resolved');
+    }
+    return this.db.report.findUnique({ where: { id } });
   }
 }

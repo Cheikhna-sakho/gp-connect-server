@@ -151,23 +151,37 @@ export class MissionsService {
 
   async update(id: UUID, data: UpdateMissionDto) {
     if (data.status) {
-      await this.validateStatusTransition(
+      const current = await this.validateStatusTransition(
         id as string,
         data.status as MissionStatus,
       );
+
+      // Verrou optimiste : la matrice de transition n'a de sens que si le
+      // write porte le statut de départ — sinon deux transitions concurrentes
+      // valident chacune sur l'ancien statut.
+      if (current) {
+        const { count } = await this.missions.updateMany({
+          where: { id, status: current },
+          data,
+        });
+        if (count === 0) {
+          throw new BadRequestException(
+            'Mission status changed concurrently — retry',
+          );
+        }
+        const mission = await this.missions.findUniqueOrThrow({
+          where: { id },
+        });
+        await this.applyStatusSideEffects({
+          id: mission.id,
+          advertisementId: mission.advertisementId,
+          status: mission.status,
+        });
+        return mission;
+      }
     }
 
-    const mission = await this.missions.update({ where: { id }, data });
-
-    if (data.status) {
-      await this.applyStatusSideEffects({
-        id: mission.id,
-        advertisementId: mission.advertisementId,
-        status: mission.status,
-      });
-    }
-
-    return mission;
+    return this.missions.update({ where: { id }, data });
   }
 
   /**
@@ -191,26 +205,37 @@ export class MissionsService {
             ? AdvertisementStatus.OPEN
             : null;
 
+    // Un seul $transaction : une panne au milieu ne doit pas laisser une
+    // mission CANCELLED avec une annonce encore IN_PROGRESS ou une
+    // transaction encore PENDING.
+    const writes = [];
     if (adStatus) {
-      await this.databaseService.advertisement.update({
-        where: { id: mission.advertisementId },
-        data: { status: adStatus },
-      });
+      writes.push(
+        this.databaseService.advertisement.update({
+          where: { id: mission.advertisementId },
+          data: { status: adStatus },
+        }),
+      );
     }
-
     if (mission.status === 'CANCELLED') {
-      await this.databaseService.transaction.updateMany({
-        where: { missionId: mission.id, status: 'PENDING' },
-        data: { status: 'CANCELLED' },
-      });
+      writes.push(
+        this.databaseService.transaction.updateMany({
+          where: { missionId: mission.id, status: 'PENDING' },
+          data: { status: 'CANCELLED' },
+        }),
+      );
     }
-
     // Auto-archive conversations when mission ends
     if (mission.status === 'COMPLETED' || mission.status === 'CANCELLED') {
-      await this.databaseService.conversation.updateMany({
-        where: { missionId: mission.id },
-        data: { status: 'ARCHIVED' },
-      });
+      writes.push(
+        this.databaseService.conversation.updateMany({
+          where: { missionId: mission.id },
+          data: { status: 'ARCHIVED' },
+        }),
+      );
+    }
+    if (writes.length) {
+      await this.databaseService.$transaction(writes);
     }
 
     // Broadcast mission status change to all linked conversation rooms
@@ -225,12 +250,13 @@ export class MissionsService {
     });
   }
 
+  /** Valide la transition et renvoie le statut de départ (pour le verrou). */
   private async validateStatusTransition(id: string, next: MissionStatus) {
     const mission = await this.missions.findUnique({
       where: { id },
       select: { status: true },
     });
-    if (!mission) return;
+    if (!mission) return null;
 
     const allowed: Record<MissionStatus, MissionStatus[]> = {
       PENDING: ['ACCEPTED', 'CANCELLED'],
@@ -249,6 +275,7 @@ export class MissionsService {
         `Cannot transition mission from ${mission.status} to ${next}`,
       );
     }
+    return mission.status;
   }
   async verifyPackagesOwnership(
     packageIds: string[],

@@ -8,7 +8,7 @@ const makeDb = () => ({
     create: jest.fn(),
     findMany: jest.fn(),
     findUnique: jest.fn(),
-    update: jest.fn(),
+    updateMany: jest.fn(),
   },
 });
 
@@ -119,20 +119,23 @@ describe('ReportsService', () => {
       await expect(
         service.resolve('r1', 'admin1', {} as never),
       ).rejects.toBeInstanceOf(NotFoundException);
-      expect(db.report.update).not.toHaveBeenCalled();
+      expect(db.report.updateMany).not.toHaveBeenCalled();
     });
 
-    it('happy : update avec status/resolution + reviewedById + reviewedAt (Date)', async () => {
-      db.report.findUnique.mockResolvedValue({ status: 'PENDING' });
-      db.report.update.mockResolvedValue({ id: 'r1' });
+    it('happy : verrou optimiste sur OPEN + reviewedById + reviewedAt (Date)', async () => {
+      db.report.findUnique
+        .mockResolvedValueOnce({ status: 'OPEN' })
+        .mockResolvedValueOnce({ id: 'r1' });
+      db.report.updateMany.mockResolvedValue({ count: 1 });
 
-      await service.resolve('r1', 'admin1', {
+      const res = await service.resolve('r1', 'admin1', {
         status: 'RESOLVED',
         resolution: 'traité',
       } as never);
 
-      expect(db.report.update).toHaveBeenCalledWith({
-        where: { id: 'r1' },
+      expect(res).toEqual({ id: 'r1' });
+      expect(db.report.updateMany).toHaveBeenCalledWith({
+        where: { id: 'r1', status: 'OPEN' },
         data: {
           status: 'RESOLVED',
           resolution: 'traité',
@@ -140,6 +143,18 @@ describe('ReportsService', () => {
           reviewedAt: expect.any(Date),
         },
       });
+    });
+
+    it('déjà résolu (count 0) → BadRequest, pas de double écriture', async () => {
+      db.report.findUnique.mockResolvedValue({ status: 'REVIEWED' });
+      db.report.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.resolve('r1', 'admin2', {
+          status: 'RESOLVED',
+          resolution: 'bis',
+        } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 });
