@@ -49,6 +49,10 @@ const p2002 = () => Object.assign(new Error('unique'), { code: 'P2002' });
 describe('DisputesService', () => {
   let db: ReturnType<typeof makeDb>;
   let missionsService: { applyStatusSideEffects: jest.Mock };
+  let githubIssues: {
+    createDisputeIssue: jest.Mock;
+    closeDisputeIssue: jest.Mock;
+  };
   let service: DisputesService;
 
   beforeEach(() => {
@@ -56,8 +60,9 @@ describe('DisputesService', () => {
     missionsService = {
       applyStatusSideEffects: jest.fn().mockResolvedValue(undefined),
     };
-    const githubIssues = {
-      createDisputeIssue: jest.fn().mockResolvedValue(undefined),
+    githubIssues = {
+      createDisputeIssue: jest.fn().mockResolvedValue(null),
+      closeDisputeIssue: jest.fn().mockResolvedValue(undefined),
     };
     const email = {
       sendDisputeOpened: jest.fn(),
@@ -149,6 +154,40 @@ describe('DisputesService', () => {
       });
       expect(result).toEqual([{ id: 'd1' }, {}]);
     });
+
+    it("persiste le numéro d'issue GitHub quand la création en renvoie un", async () => {
+      db.mission.findUnique.mockResolvedValue({
+        status: 'ACCEPTED',
+        shipperId: 'u1',
+        carrierId: 'carrier',
+        advertisementId: 'ad1',
+      });
+      githubIssues.createDisputeIssue.mockResolvedValue(42);
+
+      await service.create('m1', 'u1', data);
+      // La persistance est dans une chaîne void (jamais bloquante) : on
+      // laisse la microtask queue se vider avant d'asserter.
+      await new Promise(process.nextTick);
+
+      expect(db.missionDispute.update).toHaveBeenCalledWith({
+        where: { id: 'd1' },
+        data: { githubIssueNumber: 42 },
+      });
+    });
+
+    it("pas d'écriture si l'issue n'a pas été créée (env gaté → null)", async () => {
+      db.mission.findUnique.mockResolvedValue({
+        status: 'ACCEPTED',
+        shipperId: 'u1',
+        carrierId: 'carrier',
+        advertisementId: 'ad1',
+      });
+
+      await service.create('m1', 'u1', data);
+      await new Promise(process.nextTick);
+
+      expect(db.missionDispute.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('resolve', () => {
@@ -203,6 +242,27 @@ describe('DisputesService', () => {
         status: 'CANCELLED',
       });
       expect(updated).toEqual({ id: 'd1' });
+      // Pas de numéro d'issue stocké → pas de tentative de fermeture.
+      expect(githubIssues.closeDisputeIssue).not.toHaveBeenCalled();
+    });
+
+    it("ferme l'issue GitHub de suivi quand le litige en porte une", async () => {
+      db.missionDispute.findUnique.mockResolvedValue({
+        id: 'd1',
+        status: 'OPEN',
+        missionId: 'm1',
+        githubIssueNumber: 42,
+        mission: { advertisementId: 'ad1', status: 'DISPUTED' },
+      });
+
+      await service.resolve('d1', 'admin', data);
+      await new Promise(process.nextTick);
+
+      expect(githubIssues.closeDisputeIssue).toHaveBeenCalledWith({
+        issueNumber: 42,
+        resolution: 'refund',
+        missionOutcome: 'CANCELLED',
+      });
     });
 
     it("course entre deux résolutions : le second updateMany ne touche rien → BadRequest, pas d'effets", async () => {

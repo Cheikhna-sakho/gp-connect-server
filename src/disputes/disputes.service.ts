@@ -123,7 +123,8 @@ export class DisputesService {
     );
 
     // Suivi équipe : une issue GitHub par litige (le toast « notre équipe a
-    // été notifiée » devient vrai). Jamais bloquant pour l'ouverture.
+    // été notifiée » devient vrai). Jamais bloquant pour l'ouverture. Le
+    // numéro d'issue est persisté pour pouvoir la fermer à la résolution.
     const [dispute] = result;
     void this.githubIssues
       .createDisputeIssue({
@@ -133,6 +134,14 @@ export class DisputesService {
         description: data.description,
         openedBy: userId === mission.shipperId ? 'shipper' : 'carrier',
       })
+      .then((issueNumber) =>
+        issueNumber == null
+          ? undefined
+          : this.disputes.update({
+              where: { id: dispute.id },
+              data: { githubIssueNumber: issueNumber },
+            }),
+      )
       .catch((err) => this.logger.warn(`Issue litige non créée: ${err}`));
 
     return result;
@@ -205,6 +214,18 @@ export class DisputesService {
           missionOutcome: data.missionOutcome,
         }),
       );
+    }
+
+    // Boucle de suivi complète : l'issue GitHub ouverte à la création est
+    // commentée (texte de résolution) puis fermée. Jamais bloquant.
+    if (dispute.githubIssueNumber != null) {
+      void this.githubIssues
+        .closeDisputeIssue({
+          issueNumber: dispute.githubIssueNumber,
+          resolution: data.resolution,
+          missionOutcome: data.missionOutcome,
+        })
+        .catch((err) => this.logger.warn(`Issue litige non fermée: ${err}`));
     }
 
     return updatedDispute;

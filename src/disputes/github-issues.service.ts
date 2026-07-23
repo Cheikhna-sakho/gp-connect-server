@@ -48,24 +48,80 @@ export class GithubIssuesService {
 
     if (this.isDisabled || !token || !repo) {
       this.logger.log(`Issue litige (non envoyée) : ${title}`);
-      return;
+      return null;
     }
 
     const res = await fetch(`https://api.github.com/repos/${repo}/issues`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-        'Content-Type': 'application/json',
-      },
+      headers: this.headers(token),
       body: JSON.stringify({ title, body, labels: ['litige', data.reason] }),
     });
     if (!res.ok) {
       throw new Error(`GitHub ${res.status} : ${await res.text()}`);
     }
-    const issue = (await res.json()) as { html_url: string };
+    const issue = (await res.json()) as { html_url: string; number: number };
     this.logger.log(`Issue litige créée : ${issue.html_url}`);
-    return issue.html_url;
+    return issue.number;
+  }
+
+  /**
+   * Clôture du canal de suivi quand le litige est résolu dans l'app :
+   * commentaire avec l'issue de la résolution, puis fermeture. Deux appels
+   * indépendants — si le commentaire échoue, on tente quand même la
+   * fermeture (l'important est que l'issue ne reste pas ouverte à tort).
+   */
+  async closeDisputeIssue(data: {
+    issueNumber: number;
+    resolution: string;
+    missionOutcome: string;
+  }) {
+    const token = this.config.get<string>('GITHUB_ISSUES_TOKEN');
+    const repo = this.config.get<string>('GITHUB_ISSUES_REPO');
+
+    if (this.isDisabled || !token || !repo) {
+      this.logger.log(
+        `Issue litige #${data.issueNumber} (fermeture non envoyée)`,
+      );
+      return;
+    }
+
+    const base = `https://api.github.com/repos/${repo}/issues/${data.issueNumber}`;
+    const comment = await fetch(`${base}/comments`, {
+      method: 'POST',
+      headers: this.headers(token),
+      body: JSON.stringify({
+        body: [
+          '**Litige résolu via l’app.**',
+          `**Mission** : ${data.missionOutcome === 'COMPLETED' ? 'terminée' : 'annulée'}`,
+          '',
+          '**Résolution**',
+          data.resolution,
+        ].join('\n'),
+      }),
+    });
+    if (!comment.ok) {
+      this.logger.warn(
+        `Commentaire de résolution non posté (GitHub ${comment.status})`,
+      );
+    }
+
+    const close = await fetch(base, {
+      method: 'PATCH',
+      headers: this.headers(token),
+      body: JSON.stringify({ state: 'closed', state_reason: 'completed' }),
+    });
+    if (!close.ok) {
+      throw new Error(`GitHub ${close.status} : ${await close.text()}`);
+    }
+    this.logger.log(`Issue litige #${data.issueNumber} fermée`);
+  }
+
+  private headers(token: string) {
+    return {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'Content-Type': 'application/json',
+    };
   }
 }

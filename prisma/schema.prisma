@@ -327,6 +327,8 @@ model MissionDispute {
   resolution   String?
   resolvedById String?       @map("resolved_by_id")
   resolvedAt   DateTime?     @map("resolved_at")
+  // Numéro de l'issue GitHub de suivi (canal team) — fermée à la résolution.
+  githubIssueNumber Int?     @map("github_issue_number")
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
 

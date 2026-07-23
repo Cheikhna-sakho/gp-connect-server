@@ -10,6 +10,8 @@ export class DisputeEntity implements MissionDispute {
   @Expose() status: $Enums.DisputeStatus;
   @Expose() resolution: string;
   @Expose() resolvedById: string;
+  // Interne (canal de suivi team) — volontairement non exposé.
+  githubIssueNumber: number;
 
   @Type(() => Date)
   @Expose()
