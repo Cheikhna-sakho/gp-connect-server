@@ -10,10 +10,12 @@ import {
 } from '@nestjs/websockets';
 import { OnEvent } from '@nestjs/event-emitter';
 import { JwtService } from '@nestjs/jwt';
+import { instanceToPlain, plainToInstance } from 'class-transformer';
 import { Server, Socket } from 'socket.io';
 import { jwtConstants } from 'src/auth/constants';
 import { JwtPayload } from 'src/auth/types/jwt.type';
 import { DatabaseService } from 'src/database/database.service';
+import { MessageEntity } from 'src/messages/entities/message.entity';
 
 export type AuthenticatedSocket = Socket & { data: { userId: string } };
 
@@ -158,7 +160,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @OnEvent('message.created')
   broadcastNewMessage(payload: { message: any; conversationId: string }) {
-    this.server.to(payload.conversationId).emit('message:new', payload.message);
+    // Même forme que le REST (@Serialize(MessageEntity) + interceptor
+    // global) : sans ça, le socket émettait l'objet Prisma brut — medias en
+    // [{ media: { url } }] au lieu de string[], et le front ne rendait pas
+    // les messages MEDIA reçus en direct (seulement après reload).
+    const message = instanceToPlain(
+      plainToInstance(MessageEntity, payload.message, {
+        excludeExtraneousValues: true,
+        exposeUnsetFields: false,
+      }),
+    );
+    this.server.to(payload.conversationId).emit('message:new', message);
   }
 
   @OnEvent('offer.updated')
