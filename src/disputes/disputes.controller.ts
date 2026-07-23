@@ -5,7 +5,6 @@ import {
   Param,
   Patch,
   Post,
-  Query,
   UseGuards,
 } from '@nestjs/common';
 import { DisputesService } from './disputes.service';
@@ -31,25 +30,22 @@ export class DisputesController {
     @Param('missionId') missionId: string,
     @Body() data: CreateDisputeDto,
   ) {
-    return this.disputesService.create(missionId, userId, data).then(([dispute]) => dispute);
+    return this.disputesService
+      .create(missionId, userId, data)
+      .then(([dispute]) => dispute);
   }
 
   // Get the dispute for a mission (participant only)
   @Get(`mission/${SetIdParam('missionId')}`)
   @Serialize(DisputeEntity)
-  getByMission(@GetUserId() userId: UUID, @Param('missionId') missionId: string) {
+  getByMission(
+    @GetUserId() userId: UUID,
+    @Param('missionId') missionId: string,
+  ) {
     return this.disputesService.findByMission(missionId, userId);
   }
 
-  // Admin: list all disputes
-  @Get()
-  @UseGuards(RolesGuard)
-  @Roles('ADMIN')
-  getAll(@Query('status') status?: 'OPEN' | 'RESOLVED') {
-    return this.disputesService.findAll(status);
-  }
-
-  // Admin: resolve a dispute
+  // Admin: resolve a dispute (le listing passe par le back-office AdminJS)
   @Patch(SetIdParam('id'))
   @Serialize(DisputeEntity)
   @UseGuards(RolesGuard)

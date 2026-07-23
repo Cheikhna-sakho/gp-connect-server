@@ -46,14 +46,6 @@ const imageFileFilter = (
 export class PackagesController {
   constructor(private readonly packagesService: PackagesService) {}
 
-  @UseGuards(RolesGuard)
-  @Roles('ADMIN')
-  @Get('/all')
-  @Serialize(PackageEntity)
-  getAll() {
-    return this.packagesService.findAll();
-  }
-
   @Get()
   @Serialize(PackageEntity)
   getAllByOwner(@GetUserId() ownerId: UUID) {

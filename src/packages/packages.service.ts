@@ -37,10 +37,6 @@ export class PackagesService {
     return this.packages.findFirst({ where, include: DEFAULT_INCLUDE });
   }
 
-  async findAll() {
-    return this.packages.findMany({ include: DEFAULT_INCLUDE });
-  }
-
   async findAllByUser(ownerId: string) {
     return this.packages.findMany({
       where: { ownerId },
@@ -56,7 +52,8 @@ export class PackagesService {
       },
       select: { id: true },
     });
-    if (!mission) throw new BadRequestException('Mission not found or access denied');
+    if (!mission)
+      throw new BadRequestException('Mission not found or access denied');
     return this.packages.findMany({
       where: { mission: { some: { missionId } } },
       include: DEFAULT_INCLUDE,
@@ -85,7 +82,9 @@ export class PackagesService {
       });
     } catch (e) {
       // Rollback Cloudinary uploads if DB create fails
-      await Promise.allSettled(medias.map((m) => this.mediasService.delete({ id: m.id })));
+      await Promise.allSettled(
+        medias.map((m) => this.mediasService.delete({ id: m.id })),
+      );
       throw e;
     }
   }
@@ -109,13 +108,17 @@ export class PackagesService {
     });
     if (!pkg) throw new NotFoundException('Package not found');
     if (pkg.mission?.length) {
-      throw new BadRequestException('Cannot delete a package linked to a mission');
+      throw new BadRequestException(
+        'Cannot delete a package linked to a mission',
+      );
     }
 
     // Delete Cloudinary files + Media DB records
     // PackageMedia join records cascade when Media is deleted (onDelete: Cascade)
     await Promise.allSettled(
-      pkg.images.map(({ media }) => this.mediasService.delete({ id: media.id })),
+      pkg.images.map(({ media }) =>
+        this.mediasService.delete({ id: media.id }),
+      ),
     );
 
     return this.packages.delete({ where: { id } });

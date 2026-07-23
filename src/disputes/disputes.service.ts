@@ -138,30 +138,6 @@ export class DisputesService {
     return result;
   }
 
-  // ─── Admin: list all open disputes ────────────────────────────────────────
-
-  findAll(status?: 'OPEN' | 'RESOLVED') {
-    return this.disputes.findMany({
-      where: status ? { status } : undefined,
-      include: {
-        openedBy: {
-          select: { id: true, firstName: true, lastName: true, email: true },
-        },
-        resolvedBy: { select: { id: true, firstName: true, lastName: true } },
-        mission: {
-          select: {
-            id: true,
-            status: true,
-            shipperId: true,
-            carrierId: true,
-            advertisementId: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-  }
-
   // ─── Admin: resolve a dispute ─────────────────────────────────────────────
 
   async resolve(id: string, adminId: string, data: ResolveDisputeDto) {
