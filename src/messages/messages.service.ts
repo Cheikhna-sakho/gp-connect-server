@@ -11,7 +11,7 @@ import { MediasService } from 'src/medias/medias.service';
 import { UpdateOfferDto } from './dtos/message-offer-update.dto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
-export const MESSAGE_INCLUDE = { offer: true } as const;
+export const MESSAGE_INCLUDE = { offer: true, appointment: true } as const;
 
 @Injectable()
 export class MessagesService {
@@ -57,13 +57,20 @@ export class MessagesService {
     });
   }
 
-  async create({ offer, ...data }: Omit<CreateMessageDto, 'advertisementId'>) {
+  async create({
+    offer,
+    appointment,
+    ...data
+  }: Omit<CreateMessageDto, 'advertisementId'>) {
     const message = await this.messages.create({
       data: {
         ...data,
         ...(data.type === 'OFFER' ? { offer: { create: offer } } : {}),
+        ...(data.type === 'APPOINTMENT'
+          ? { appointment: { create: appointment } }
+          : {}),
       },
-      include: { offer: true },
+      include: MESSAGE_INCLUDE,
     });
     await this.touchConversation(
       this.databaseService,

@@ -1,6 +1,13 @@
-import { $Enums, Message, MessageOffer, Prisma } from '@prisma/client';
+import {
+  $Enums,
+  Message,
+  MessageAppointment,
+  MessageOffer,
+  Prisma,
+} from '@prisma/client';
 import { Expose, Transform, Type } from 'class-transformer';
 import { MessageOfferEntity } from './message-offer.entity';
+import { MessageAppointmentEntity } from './message-appointment.entity';
 
 type MessageMedia = Prisma.MessageMediaGetPayload<{ include: { media: true } }>;
 
@@ -29,6 +36,10 @@ export class MessageEntity implements Message {
   @Expose()
   @Type(() => MessageOfferEntity)
   offer: MessageOffer;
+
+  @Expose()
+  @Type(() => MessageAppointmentEntity)
+  appointment: MessageAppointment;
 
   // Transforme medias[] → tableau d'URLs pour les messages MEDIA.
   // toPlainOnly obligatoire : sans lui, la double sérialisation (route

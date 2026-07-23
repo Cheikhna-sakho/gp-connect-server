@@ -178,6 +178,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.server.to(payload.conversationId).emit('offer:updated', payload.offer);
   }
 
+  @OnEvent('appointment.updated')
+  broadcastAppointmentUpdate(payload: {
+    appointment: any;
+    conversationId: string;
+  }) {
+    this.server
+      .to(payload.conversationId)
+      .emit('appointment:updated', payload.appointment);
+  }
+
   @OnEvent('mission.status-changed')
   broadcastMissionStatusChanged(payload: {
     missionId: string;

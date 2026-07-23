@@ -10,6 +10,7 @@ import {
 } from 'class-validator';
 import { Prisma, $Enums } from '@prisma/client';
 import { CreateOfferDto } from './message-offer.dto';
+import { CreateAppointmentDto } from './message-appointment.dto';
 import { Type } from 'class-transformer';
 
 const IsForType = (type: $Enums.MessageType) =>
@@ -17,7 +18,7 @@ const IsForType = (type: $Enums.MessageType) =>
 
 export class CreateMessageDto
   extends CreateOfferDto
-  implements Omit<Prisma.MessageUncheckedCreateInput, 'offer'>
+  implements Omit<Prisma.MessageUncheckedCreateInput, 'offer' | 'appointment'>
 {
   @IsForType('TEXT')
   @IsString()
@@ -40,4 +41,9 @@ export class CreateMessageDto
   @ValidateNested()
   @Type(() => CreateOfferDto)
   offer: CreateOfferDto;
+
+  @IsForType('APPOINTMENT')
+  @ValidateNested()
+  @Type(() => CreateAppointmentDto)
+  appointment: CreateAppointmentDto;
 }

@@ -17,6 +17,7 @@ import { ConversationsModule } from './conversations/conversations.module';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { MediasModule } from './medias/medias.module';
 import { OffersModule } from './offers/offers.module';
+import { AppointmentsModule } from './appointments/appointments.module';
 import { ProofModule } from './proof/proof.module';
 import { EmailModule } from './email/email.module';
 import { ConfigModule } from '@nestjs/config';
@@ -50,6 +51,7 @@ import { AdminPanelModule } from './admin/admin-panel.module';
     CloudinaryModule,
     MediasModule,
     OffersModule,
+    AppointmentsModule,
     ProofModule,
     EmailModule,
     PhoneModule,

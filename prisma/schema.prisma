@@ -468,9 +468,21 @@ model Conversation {
 }
 
 enum MessageType {
-  MEDIA @map("media")
-  OFFER @map("offer")
-  TEXT  @map("text")
+  APPOINTMENT @map("appointment")
+  MEDIA       @map("media")
+  OFFER       @map("offer")
+  TEXT        @map("text")
+}
+
+enum AppointmentType {
+  PICKUP   @map("pickup")
+  DELIVERY @map("delivery")
+}
+
+enum MessageAppointmentStatus {
+  PENDING  @map("pending")
+  ACCEPTED @map("accepted")
+  REJECTED @map("rejected")
 }
 
 model Message {
@@ -482,12 +494,29 @@ model Message {
   createdAt      DateTime    @default(now()) @map("created_at")
   updatedAt      DateTime    @updatedAt @map("updated_at")
 
-  conversation Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  author       User           @relation("sender", fields: [authorId], references: [id])
+  conversation Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  author       User                @relation("sender", fields: [authorId], references: [id])
   medias       MessageMedia[]
   offer        MessageOffer?
+  appointment  MessageAppointment?
 
   @@map("messages")
+}
+
+// RDV de dépôt (PICKUP) ou de retrait (DELIVERY) proposé dans le chat —
+// même mécanique que MessageOffer : une partie propose, l'autre accepte
+// ou décline. Stocké en UTC, affiché en local côté client.
+model MessageAppointment {
+  id          String                   @id
+  type        AppointmentType
+  scheduledAt DateTime                 @map("scheduled_at")
+  status      MessageAppointmentStatus @default(PENDING)
+  createdAt   DateTime                 @default(now()) @map("created_at")
+  updatedAt   DateTime                 @updatedAt @map("updated_at")
+
+  message Message @relation(fields: [id], references: [id], onDelete: Cascade)
+
+  @@map("message_appointments")
 }
 
 model MessageMedia {

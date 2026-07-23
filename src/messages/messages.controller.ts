@@ -81,6 +81,14 @@ export class MessagesController {
       );
     }
 
+    // Un RDV dans le passé n'a pas de sens — refusé à la porte.
+    if (
+      data.type === 'APPOINTMENT' &&
+      new Date(data.appointment.scheduledAt) <= new Date()
+    ) {
+      throw new BadRequestException('Appointment must be in the future');
+    }
+
     return this.messagesService.create({ ...data, authorId });
   }
 
