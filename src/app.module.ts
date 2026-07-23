@@ -34,9 +34,13 @@ import { AdminPanelModule } from './admin/admin-panel.module';
 
 @Module({
   imports: [
+    // ConfigModule DOIT s'évaluer en premier : son forRoot charge le .env
+    // dans process.env de façon synchrone, et AdminPanelModule.forRoot()
+    // (juste en dessous) lit process.env.ADMIN_PANEL_PASSWORD à l'évaluation
+    // du tableau — inversés, le panel restait désactivé même configuré.
+    ConfigModule.forRoot({ isGlobal: true }),
     // Back-office /admin — ne s'enregistre que si ADMIN_PANEL_PASSWORD est posé.
     ...AdminPanelModule.forRoot(),
-    ConfigModule.forRoot({ isGlobal: true }),
     EventEmitterModule.forRoot({ global: true }),
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 100 }]),
     DatabaseModule,
