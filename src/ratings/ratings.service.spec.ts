@@ -17,6 +17,7 @@ const makeDb = () => ({
   },
   mission: {
     findUnique: jest.fn(),
+    findFirst: jest.fn(),
   },
 });
 
@@ -153,16 +154,26 @@ describe('RatingsService', () => {
   });
 
   describe('findByMission', () => {
-    it('renvoie les notes scopées sur missionId', async () => {
+    it('renvoie les notes scopées sur missionId pour un participant', async () => {
       const rows = [{ id: 'r1' }, { id: 'r2' }];
+      db.mission.findFirst.mockResolvedValue({ id: 'm1' });
       db.missionRating.findMany.mockResolvedValue(rows);
 
-      const res = await service.findByMission('m1');
+      const res = await service.findByMission('m1', 'u1');
 
       expect(res).toBe(rows);
       expect(db.missionRating.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { missionId: 'm1' } }),
       );
+    });
+
+    it("lève Forbidden si le demandeur n'est pas participant", async () => {
+      db.mission.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.findByMission('m1', 'intrus'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(db.missionRating.findMany).not.toHaveBeenCalled();
     });
   });
 

@@ -24,8 +24,11 @@ export class RatingsController {
 
   @Get(`mission/${SetIdParam('missionId')}`)
   @Serialize(RatingEntity)
-  getByMission(@Param('missionId') missionId: string) {
-    return this.ratingsService.findByMission(missionId);
+  getByMission(
+    @GetUserId() userId: UUID,
+    @Param('missionId') missionId: string,
+  ) {
+    return this.ratingsService.findByMission(missionId, userId);
   }
 
   // Ratings received by the authenticated user (for their profile/dashboard)

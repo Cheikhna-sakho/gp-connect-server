@@ -1,3 +1,4 @@
+import { Throttle } from '@nestjs/throttler';
 import {
   BadRequestException,
   Body,
@@ -57,6 +58,8 @@ export class MessagesController {
     return this.messagesService.find({ conversationId });
   }
 
+  // Anti-spam : plafond dédié (le global 100/min laissait trop de marge)
+  @Throttle({ default: { limit: 40, ttl: 60_000 } })
   @Post()
   @Serialize(MessageEntity)
   async create(@GetUserId() authorId: UUID, @Body() data: CreateMessageDto) {
@@ -81,6 +84,7 @@ export class MessagesController {
     return this.messagesService.create({ ...data, authorId });
   }
 
+  @Throttle({ default: { limit: 40, ttl: 60_000 } })
   @Post('media')
   @Serialize(MessageEntity)
   @UseInterceptors(

@@ -1,14 +1,8 @@
-import {
-  $Enums,
-  MissionProof,
-  Prisma,
-  Transaction,
-  User,
-} from '@prisma/client';
+import { $Enums, MissionProof, Prisma, Transaction } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Expose, Transform, Type } from 'class-transformer';
 import { MissionPackageEntity } from './mission-package.entity';
-import { UserEntity } from 'src/users/entities/user.entity';
+import { PublicUserEntity } from 'src/users/entities/public-user.entity';
 import { TransactionEntity } from 'src/transactions/entities/transaction.entity';
 import { CityEntity } from 'src/addresses/entities/city.entity';
 
@@ -135,14 +129,17 @@ export class MissionEntity implements Mission {
   }
 
   @Expose() shipperId: string;
-  @Type(() => UserEntity)
+  // Vue PUBLIQUE de la contrepartie : pas d'email/téléphone entre parties
+  // (anti-désintermédiation — même règle que ConversationEntity). Le front
+  // ne consomme que fullName/avatar/trust.
+  @Type(() => PublicUserEntity)
   @Expose()
-  shipper: User;
+  shipper: PublicUserEntity;
 
   @Expose() carrierId: string;
-  @Type(() => UserEntity)
+  @Type(() => PublicUserEntity)
   @Expose()
-  carrier: User;
+  carrier: PublicUserEntity;
 
   // Destinataire à destination (visible des deux parties de la mission)
   @Expose() recipientName: string | null;

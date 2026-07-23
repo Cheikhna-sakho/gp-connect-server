@@ -31,8 +31,10 @@ export class RatingsService {
     }
 
     // Rate the other party
-    const ratedId = raterId === mission.shipperId ? mission.carrierId : mission.shipperId;
-    if (!ratedId) throw new BadRequestException('No carrier assigned to this mission');
+    const ratedId =
+      raterId === mission.shipperId ? mission.carrierId : mission.shipperId;
+    if (!ratedId)
+      throw new BadRequestException('No carrier assigned to this mission');
 
     try {
       return await this.ratings.create({
@@ -46,7 +48,16 @@ export class RatingsService {
     }
   }
 
-  findByMission(missionId: string) {
+  async findByMission(missionId: string, userId: string) {
+    // Réservé aux participants (sinon énumération des avis par missionId).
+    const mission = await this.databaseService.mission.findFirst({
+      where: {
+        id: missionId,
+        OR: [{ shipperId: userId }, { carrierId: userId }],
+      },
+      select: { id: true },
+    });
+    if (!mission) throw new ForbiddenException();
     return this.ratings.findMany({
       where: { missionId },
       include: {
