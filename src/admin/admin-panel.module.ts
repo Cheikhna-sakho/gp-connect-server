@@ -182,6 +182,18 @@ export class AdminPanelModule {
                     actions: readOnly,
                   },
                 },
+                // Hors navigation : uniquement là pour que les références
+                // des annonces (departure/destination → Address → City) se
+                // résolvent — sans elles, lister les annonces crashe
+                // (« no resources with given id: Address »).
+                {
+                  resource: { model: model('Address'), client: db },
+                  options: { navigation: false, actions: readOnly },
+                },
+                {
+                  resource: { model: model('City'), client: db },
+                  options: { navigation: false, actions: readOnly },
+                },
                 {
                   resource: { model: model('MissionRating'), client: db },
                   options: {
