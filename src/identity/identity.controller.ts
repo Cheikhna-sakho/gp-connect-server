@@ -1,3 +1,5 @@
+import { ApiBadRequestResponse, ApiTags } from '@nestjs/swagger';
+import { ApiAuth } from 'src/common/decorators/api-auth.decorator';
 import {
   Controller,
   Get,
@@ -19,16 +21,20 @@ import { Serialize } from 'src/common/decorators/serialize.decorator';
 import { IdentityStatusEntity } from './entities/identity-status.entity';
 import { IdentitySessionEntity } from './entities/identity-session.entity';
 
+@ApiTags('identity')
 @Controller('identity')
 export class IdentityController {
   constructor(private readonly identityService: IdentityService) {}
 
+  @ApiAuth()
   @Get('status')
   @Serialize(IdentityStatusEntity)
   getStatus(@GetUserId() userId: UUID) {
     return this.identityService.getStatus(userId);
   }
 
+  @ApiAuth()
+  @ApiBadRequestResponse({ description: 'Identité déjà vérifiée' })
   @Post('start')
   @Serialize(IdentitySessionEntity)
   start(@GetUserId() userId: UUID) {
@@ -38,6 +44,9 @@ export class IdentityController {
   @Public()
   @SkipThrottle()
   @SkipCsrf()
+  @ApiBadRequestResponse({
+    description: 'Signature Stripe invalide ou secret non configuré',
+  })
   @Post('webhook')
   @HttpCode(HttpStatus.OK)
   webhook(

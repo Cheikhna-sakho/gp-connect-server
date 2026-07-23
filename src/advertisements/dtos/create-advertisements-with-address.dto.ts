@@ -6,7 +6,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { CreateAdvertisementDto } from './create-advertisements.dto';
-import { OmitType } from '@nestjs/mapped-types';
+import { OmitType } from '@nestjs/swagger';
 import { CreateFullAddressDto } from 'src/addresses/dtos/create-full-address.dto';
 import { Type } from 'class-transformer';
 

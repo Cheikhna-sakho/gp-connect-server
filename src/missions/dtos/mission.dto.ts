@@ -1,3 +1,4 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { $Enums, Mission } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import {
@@ -23,6 +24,7 @@ export class MissionDto implements Mission {
   @IsUUID()
   carrierId: string;
   @IsNumber()
+  @ApiProperty({ type: Number })
   negotiatedPrice: Decimal;
   @IsEnum($Enums.MissionStatus)
   status: $Enums.MissionStatus;

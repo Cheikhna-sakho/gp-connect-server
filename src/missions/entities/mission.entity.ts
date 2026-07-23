@@ -1,3 +1,4 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { $Enums, MissionProof, Prisma, Transaction } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Expose, Transform, Type } from 'class-transformer';
@@ -69,10 +70,12 @@ class MissionAdAddressEntity {
 
   @Type(() => Number)
   @Expose()
+  @ApiProperty({ type: Number })
   latitude: Decimal;
 
   @Type(() => Number)
   @Expose()
+  @ApiProperty({ type: Number })
   longitude: Decimal;
 
   @Type(() => CityEntity)
@@ -97,6 +100,7 @@ export class MissionEntity implements Mission {
 
   @Expose()
   @Type(() => Number)
+  @ApiProperty({ type: Number })
   negotiatedPrice: Decimal;
 
   @Expose() status: $Enums.MissionStatus;

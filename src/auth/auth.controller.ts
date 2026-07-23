@@ -11,6 +11,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import {
+  ApiBadRequestResponse,
+  ApiTags,
+  ApiTooManyRequestsResponse,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RefreshTokenGuard } from './guards/refreshToken.guard';
 import { Public } from 'src/common/decorators/public.decorator';
@@ -89,6 +95,7 @@ function clearAuthCookies(res: Response) {
   res.clearCookie('rt', clearOptions);
 }
 
+@ApiTags('auth')
 @Public()
 @Controller('auth')
 export class AuthController {
@@ -96,7 +103,12 @@ export class AuthController {
 
   // ─── OTP / Email ──────────────────────────────────────────────────────────
 
+  /** Demande d'OTP (email ou SMS selon l'identifiant) — 1ʳᵉ étape du login. */
   @Post('login')
+  @ApiUnauthorizedResponse({ description: 'Compte inconnu' })
+  @ApiTooManyRequestsResponse({
+    description: 'Plafond envois OTP atteint (5/min par défaut)',
+  })
   @HttpCode(HttpStatus.NO_CONTENT)
   @Throttle(AUTH_THROTTLE)
   login(@Body() data: LoginDto) {
@@ -104,13 +116,24 @@ export class AuthController {
   }
 
   @Post('register')
+  @ApiBadRequestResponse({
+    description: 'Payload invalide (email, téléphone, mot de passe faible)',
+  })
+  @ApiTooManyRequestsResponse({
+    description: 'Plafond 3 inscriptions/heure atteint',
+  })
   @Serialize(UserEntity)
   @Throttle({ default: { limit: 3, ttl: 3_600_000 } })
   register(@Body() data: CreateUserDto) {
     return this.authService.register(data);
   }
 
+  /** Vérifie l'OTP et pose les cookies de session (at/rt, httpOnly). */
   @Post('otp')
+  @ApiUnauthorizedResponse({ description: 'Code invalide ou expiré' })
+  @ApiTooManyRequestsResponse({
+    description: 'Plafond 5 essais/15 min atteint (par IP)',
+  })
   @Serialize(UserEntity)
   @Throttle(OTP_THROTTLE)
   async otp(

@@ -1,4 +1,10 @@
 import {
+  ApiBadRequestResponse,
+  ApiForbiddenResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { ApiAuth } from 'src/common/decorators/api-auth.decorator';
+import {
   Body,
   Controller,
   Get,
@@ -19,11 +25,14 @@ import { ResolveReportDto } from './dtos/resolve-report.dto';
 import { RolesGuard } from 'src/auth/guards/role.guard';
 import { Roles } from 'src/auth/decorators/role.decorator';
 
+@ApiTags('reports')
+@ApiAuth()
 @Controller('reports')
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
   // Tout utilisateur authentifié peut signaler.
+  @ApiBadRequestResponse({ description: 'Auto-signalement refusé' })
   @Post()
   @Serialize(ReportEntity)
   create(@GetUserId() userId: string, @Body() data: CreateReportDto) {
@@ -39,6 +48,10 @@ export class ReportsController {
     return this.reportsService.findAll(status);
   }
 
+  @ApiForbiddenResponse({ description: 'Rôle ADMIN requis' })
+  @ApiBadRequestResponse({
+    description: 'Signalement déjà résolu (verrou optimiste)',
+  })
   @Patch(SetIdParam('id'))
   @UseGuards(RolesGuard)
   @Roles('ADMIN')

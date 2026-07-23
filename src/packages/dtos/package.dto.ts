@@ -1,4 +1,4 @@
-import { OmitType, PartialType } from '@nestjs/mapped-types';
+import { OmitType, PartialType } from '@nestjs/swagger';
 import { Prisma } from '@prisma/client';
 import { DecimalJsLike } from '@prisma/client/runtime/library';
 import {

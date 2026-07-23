@@ -1,3 +1,4 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { $Enums, AdvertisementStatus, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Expose, plainToInstance, Transform, Type } from 'class-transformer';
@@ -53,10 +54,12 @@ export class AdvertisementEntity implements Advertisement {
 
   @Type(() => Number)
   @Expose()
+  @ApiProperty({ type: Number })
   price: Decimal;
 
   @Type(() => Number)
   @Expose()
+  @ApiProperty({ type: Number })
   maxWeight: Decimal;
 
   @Expose() destinationId: string;

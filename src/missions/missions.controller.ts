@@ -1,4 +1,11 @@
 import {
+  ApiBadRequestResponse,
+  ApiForbiddenResponse,
+  ApiNotFoundResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { ApiAuth } from 'src/common/decorators/api-auth.decorator';
+import {
   BadRequestException,
   Body,
   Controller,
@@ -37,6 +44,8 @@ import { ProofOtpEntity } from 'src/proof/entities/proof-otp.entity';
 import { VerifyProofDto } from 'src/proof/dtos/verify-proof.dto';
 import { PhoneService } from 'src/phone/phone.service';
 
+@ApiTags('missions')
+@ApiAuth()
 @Controller('missions')
 export class MissionsController {
   constructor(
@@ -67,6 +76,10 @@ export class MissionsController {
 
   @UseGuards(RolesGuard)
   @Roles('SHIPPER')
+  @ApiNotFoundResponse({ description: 'Annonce inconnue' })
+  @ApiForbiddenResponse({
+    description: "Colis n'appartenant pas à l'expéditeur",
+  })
   @Post()
   @Serialize(MissionEntity)
   create(@GetUserId() shipperId: UUID, @Body() data: CreateMissionDto) {
@@ -180,6 +193,10 @@ export class MissionsController {
 
   // ─── Proof verification (Carrier) ─────────────────────────────────────────
 
+  /** Vérifie l'OTP de ramassage : colis PICKED_UP, mission IN_TRANSIT. */
+  @ApiBadRequestResponse({
+    description: 'Code invalide, expiré, déjà utilisé, ou trop d’essais',
+  })
   @Post(':id/verify/pickup')
   @Serialize(ProofEntity)
   async verifyPickUp(
@@ -200,6 +217,10 @@ export class MissionsController {
     });
   }
 
+  /** Vérifie l'OTP de livraison : colis DELIVERED, mission/annonce COMPLETED, transaction COMPLETED. */
+  @ApiBadRequestResponse({
+    description: 'Code invalide, expiré, déjà utilisé, ou trop d’essais',
+  })
   @Post(':id/verify/delivery')
   @Serialize(ProofEntity)
   async verifyDelivery(
@@ -297,6 +318,11 @@ export class MissionsController {
     );
   }
 
+  /** Transition de statut (machine à états) ou mise à jour du destinataire. */
+  @ApiBadRequestResponse({
+    description:
+      'Transition interdite par la machine à états, ou statut modifié concurremment',
+  })
   @Patch(ID_PARAM)
   @Serialize(MissionEntity)
   async update(

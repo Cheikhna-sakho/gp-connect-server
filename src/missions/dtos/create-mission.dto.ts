@@ -1,4 +1,4 @@
-import { PickType } from '@nestjs/mapped-types';
+import { PickType } from '@nestjs/swagger';
 import { MissionDto } from './mission.dto';
 import { Prisma } from '@prisma/client';
 

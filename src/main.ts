@@ -7,6 +7,7 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import helmet from 'helmet';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { NextFunction, Request, Response } from 'express';
 import cookieParser from 'cookie-parser';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
@@ -26,7 +27,7 @@ async function bootstrap() {
   const strictHelmet = helmet();
   const adminHelmet = helmet({ contentSecurityPolicy: false });
   app.use((req: Request, res: Response, next: NextFunction) =>
-    req.path.startsWith('/admin')
+    req.path.startsWith('/admin') || req.path.startsWith('/docs')
       ? adminHelmet(req, res, next)
       : strictHelmet(req, res, next),
   );
@@ -47,6 +48,30 @@ async function bootstrap() {
       transformOptions: { enableImplicitConversion: true },
     }),
   );
+
+  // Documentation API (Swagger) sur /docs — les schémas des DTOs/entités
+  // sont générés par le plugin CLI @nestjs/swagger (nest-cli.json) à partir
+  // des types + class-validator ; les contrôleurs portent tags, auth et
+  // codes d'erreur. La CSP stricte bloque les scripts inline de Swagger UI :
+  // /docs passe par la même exemption que /admin (cf. middleware helmet).
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('GPConnect API')
+    .setDescription(
+      'API de la marketplace de livraison collaborative GPConnect — ' +
+        'annonces, négociation (conversations/offres/RDV), missions avec ' +
+        'preuves OTP, transactions, confiance & sécurité. ' +
+        'Auth par cookies httpOnly (access/refresh) posés par /auth : dans ' +
+        'Swagger UI, se connecter via POST /auth/login puis /auth/otp — le ' +
+        'navigateur porte les cookies automatiquement.',
+    )
+    .setVersion('1.0')
+    .addCookieAuth('access_token')
+    .build();
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('docs', app, document, {
+    customSiteTitle: 'GPConnect API — documentation',
+    swaggerOptions: { persistAuthorization: true, docExpansion: 'none' },
+  });
 
   const logger = new Logger('Bootstrap');
   await app.listen(PORT);

@@ -1,4 +1,11 @@
 import {
+  ApiBadRequestResponse,
+  ApiForbiddenResponse,
+  ApiNotFoundResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { ApiAuth } from 'src/common/decorators/api-auth.decorator';
+import {
   Body,
   Controller,
   Delete,
@@ -28,6 +35,7 @@ import { AdvertisementQueryFindDto } from './dtos/advertisements-query-find.dto'
 import { Serialize } from 'src/common/decorators/serialize.decorator';
 import { SerializePage } from 'src/common/decorators/serialize-page.decorator';
 
+@ApiTags('advertisements')
 @Controller('advertisements')
 export class AdvertisementsController {
   constructor(
@@ -120,14 +128,21 @@ export class AdvertisementsController {
 
   @Public()
   @Get(ID_PARAM)
+  @ApiNotFoundResponse({ description: 'Annonce inconnue ou supprimée' })
   @Serialize(AdvertisementEntity)
-  getOne(@Param('id') id: UUID) {
+  async getOne(@Param('id') id: UUID) {
     // Vue publique sans conversations → pas de fuite des offres/enchérisseurs.
-    return this.advertisementsService.findPublic(id);
+    const ad = await this.advertisementsService.findPublic(id);
+    // Sans ce garde : 200 + {} pour une annonce supprimée (le front croyait
+    // à une annonce vide au lieu d'un vrai « n'existe plus »).
+    if (!ad) throw new NotFoundException('Advertisement not found');
+    return ad;
   }
 
   // Les offres reçues sur une annonce ne sont visibles que par son auteur
   // (sinon n'importe qui voyait les enchères/prix de tous les candidats).
+  @ApiAuth()
+  @ApiForbiddenResponse({ description: "Réservé à l'auteur de l'annonce" })
   @Get(`${ID_PARAM}/offers`)
   async getOffers(@GetUserId() userId: string, @Param('id') id: UUID) {
     const ad = await this.advertisementsService.findBy({ id });
@@ -136,6 +151,7 @@ export class AdvertisementsController {
     return this.advertisementsService.findOffers(id);
   }
 
+  @ApiAuth()
   @Get('mine')
   @SerializePage(AdvertisementEntity)
   getMine(
@@ -192,6 +208,8 @@ export class AdvertisementsController {
     );
   }
 
+  @ApiAuth()
+  @ApiForbiddenResponse({ description: 'Rôle CARRIER requis' })
   @UseGuards(RolesGuard)
   @Roles('CARRIER')
   @Post('delivery')
@@ -218,6 +236,8 @@ export class AdvertisementsController {
     });
   }
 
+  @ApiAuth()
+  @ApiForbiddenResponse({ description: 'Rôle SHIPPER requis' })
   @UseGuards(RolesGuard)
   @Roles('SHIPPER')
   @Post('shipping')
@@ -244,6 +264,9 @@ export class AdvertisementsController {
     });
   }
 
+  @ApiAuth()
+  @ApiForbiddenResponse({ description: "Réservé à l'auteur de l'annonce" })
+  @ApiNotFoundResponse({ description: 'Annonce inconnue' })
   @Patch(ID_PARAM)
   @Serialize(AdvertisementEntity)
   update(
@@ -254,6 +277,11 @@ export class AdvertisementsController {
     return this.advertisementsService.update({ data, where: { id, authorId } });
   }
 
+  @ApiAuth()
+  @ApiForbiddenResponse({ description: "Réservé à l'auteur de l'annonce" })
+  @ApiBadRequestResponse({
+    description: 'Annonce avec mission en cours — suppression refusée',
+  })
   @Delete(ID_PARAM)
   @HttpCode(HttpStatus.NO_CONTENT)
   delete(@GetUserId() authorId: string, @Param('id') id: UUID) {

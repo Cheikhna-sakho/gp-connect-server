@@ -1,4 +1,12 @@
 import {
+  ApiBadRequestResponse,
+  ApiConflictResponse,
+  ApiForbiddenResponse,
+  ApiNotFoundResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { ApiAuth } from 'src/common/decorators/api-auth.decorator';
+import {
   Body,
   Controller,
   Get,
@@ -18,11 +26,21 @@ import { SetIdParam } from 'src/common/constants/route.util.const';
 import { RolesGuard } from 'src/auth/guards/role.guard';
 import { Roles } from 'src/auth/decorators/role.decorator';
 
+@ApiTags('disputes')
+@ApiAuth()
 @Controller('disputes')
 export class DisputesController {
   constructor(private readonly disputesService: DisputesService) {}
 
   // Open a dispute on a mission (shipper or carrier)
+  @ApiNotFoundResponse({ description: 'Mission inconnue' })
+  @ApiForbiddenResponse({ description: 'Non-participant de la mission' })
+  @ApiBadRequestResponse({
+    description: 'Statut de mission hors ACCEPTED/IN_TRANSIT',
+  })
+  @ApiConflictResponse({
+    description: 'Un litige est déjà ouvert sur cette mission',
+  })
   @Post(`mission/${SetIdParam('missionId')}`)
   @Serialize(DisputeEntity)
   create(
@@ -46,6 +64,11 @@ export class DisputesController {
   }
 
   // Admin: resolve a dispute (le listing passe par le back-office AdminJS)
+  /** Résolution admin : mission terminée ou annulée + emails aux parties + fermeture de l'issue GitHub. */
+  @ApiForbiddenResponse({ description: 'Rôle ADMIN requis' })
+  @ApiBadRequestResponse({
+    description: 'Litige déjà résolu (verrou optimiste)',
+  })
   @Patch(SetIdParam('id'))
   @Serialize(DisputeEntity)
   @UseGuards(RolesGuard)

@@ -1,3 +1,4 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { $Enums, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Expose, Transform, Type } from 'class-transformer';
@@ -18,6 +19,7 @@ export class PackageEntity implements PackageWithIncludes {
 
   @Type(() => Number)
   @Expose()
+  @ApiProperty({ type: Number })
   weight: Decimal;
 
   @Expose() ownerId: string;

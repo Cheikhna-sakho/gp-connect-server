@@ -1,3 +1,5 @@
+import { ApiTags } from '@nestjs/swagger';
+import { ApiAuth } from 'src/common/decorators/api-auth.decorator';
 import {
   BadRequestException,
   Body,
@@ -42,6 +44,8 @@ const imageFileFilter = (
   cb(null, true);
 };
 
+@ApiTags('packages')
+@ApiAuth()
 @Controller('packages')
 export class PackagesController {
   constructor(private readonly packagesService: PackagesService) {}

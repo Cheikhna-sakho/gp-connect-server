@@ -12,7 +12,7 @@ import * as bcrypt from 'bcrypt';
 import { MediasService } from 'src/medias/medias.service';
 import { UUID } from 'crypto';
 import { USER_DEFAULT_INCLUDE } from './entities/user.entity';
-import { UpdateUserDto } from './dtos/update-user-dto';
+import { UpdateUserDto } from './dtos/update-user.dto';
 import { EmailService } from 'src/email/email.service';
 import { generateEmailToken, getHashFromToken } from './generateEmailToken';
 import { PhoneService } from 'src/phone/phone.service';

@@ -1,3 +1,4 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { $Enums, Transaction } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Expose, Type } from 'class-transformer';
@@ -7,6 +8,7 @@ export class TransactionEntity implements Transaction {
 
   @Type(() => Number)
   @Expose()
+  @ApiProperty({ type: Number })
   amount: Decimal;
 
   @Expose() method: $Enums.TransactionMethod;

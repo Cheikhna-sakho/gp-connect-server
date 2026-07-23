@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { UUID } from 'crypto';
 import { DatabaseService } from 'src/database/database.service';
 import { CreateAddressDto } from './dtos/create-address.dto';
-import { CreateCityDto } from './dtos/create-city-dto';
+import { CreateCityDto } from './dtos/create-city.dto';
 import { CreateFullAddressDto } from './dtos/create-full-address.dto';
 import { Decimal } from '@prisma/client/runtime/library';
 

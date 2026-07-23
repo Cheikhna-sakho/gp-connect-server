@@ -1,3 +1,5 @@
+import { ApiBadRequestResponse, ApiTags } from '@nestjs/swagger';
+import { ApiAuth } from 'src/common/decorators/api-auth.decorator';
 import {
   Controller,
   Delete,
@@ -13,6 +15,8 @@ import { SetIdParam } from 'src/common/constants/route.util.const';
 import { Serialize } from 'src/common/decorators/serialize.decorator';
 import { PublicUserEntity } from 'src/users/entities/public-user.entity';
 
+@ApiTags('blocks')
+@ApiAuth()
 @Controller('blocks')
 export class BlocksController {
   constructor(private readonly blocksService: BlocksService) {}
@@ -24,6 +28,7 @@ export class BlocksController {
     return this.blocksService.list(userId);
   }
 
+  @ApiBadRequestResponse({ description: 'Auto-blocage refusé' })
   @Post(SetIdParam('userId'))
   @HttpCode(HttpStatus.NO_CONTENT)
   async block(

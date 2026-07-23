@@ -1,5 +1,13 @@
 import { Throttle } from '@nestjs/throttler';
 import {
+  ApiBadRequestResponse,
+  ApiForbiddenResponse,
+  ApiPayloadTooLargeResponse,
+  ApiTags,
+  ApiTooManyRequestsResponse,
+} from '@nestjs/swagger';
+import { ApiAuth } from 'src/common/decorators/api-auth.decorator';
+import {
   BadRequestException,
   Body,
   Controller,
@@ -37,6 +45,8 @@ const ALLOWED_MEDIA_TYPES = [
   'video/webm',
 ];
 
+@ApiTags('messages')
+@ApiAuth()
 @Controller('messages')
 export class MessagesController {
   constructor(
@@ -45,6 +55,9 @@ export class MessagesController {
   ) {}
 
   @Get(SetIdParam('conversationId'))
+  @ApiForbiddenResponse({
+    description: 'Non-participant de la conversation',
+  })
   @Serialize(MessageEntity)
   async getAll(
     @GetUserId() userId: UUID,
@@ -61,6 +74,17 @@ export class MessagesController {
   // Anti-spam : plafond dédié (le global 100/min laissait trop de marge)
   @Throttle({ default: { limit: 40, ttl: 60_000 } })
   @Post()
+  @ApiForbiddenResponse({
+    description:
+      'Non-participant, blocage entre les parties, ou offre non autorisée',
+  })
+  @ApiBadRequestResponse({
+    description:
+      'Payload invalide (type/contenu), poids d’offre hors annonce, ou RDV daté dans le passé',
+  })
+  @ApiTooManyRequestsResponse({
+    description: 'Plafond 40 messages/min atteint',
+  })
   @Serialize(MessageEntity)
   async create(@GetUserId() authorId: UUID, @Body() data: CreateMessageDto) {
     const allowed = await this.conversationsService.isParticipant(
@@ -94,6 +118,15 @@ export class MessagesController {
 
   @Throttle({ default: { limit: 40, ttl: 60_000 } })
   @Post('media')
+  @ApiForbiddenResponse({
+    description: 'Non-participant ou blocage entre les parties',
+  })
+  @ApiBadRequestResponse({
+    description:
+      'conversationId manquant ou type de fichier hors allowlist (image/audio/vidéo)',
+  })
+  @ApiPayloadTooLargeResponse({ description: 'Fichier > 20 Mo' })
+  @ApiTooManyRequestsResponse({ description: 'Plafond 40 envois/min atteint' })
   @Serialize(MessageEntity)
   @UseInterceptors(
     FileInterceptor('file', {
@@ -127,6 +160,10 @@ export class MessagesController {
   }
 
   @Patch(ID_PARAM)
+  @ApiForbiddenResponse({
+    description: 'Seul l’auteur du message peut le modifier',
+  })
+  @ApiBadRequestResponse({ description: 'Offre non modifiable (plus PENDING)' })
   @Serialize(MessageEntity)
   async update(
     @GetUserId() userId: UUID,
@@ -143,6 +180,9 @@ export class MessagesController {
   }
 
   @Delete(ID_PARAM)
+  @ApiForbiddenResponse({
+    description: 'Seul l’auteur du message peut le supprimer',
+  })
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(@GetUserId() userId: UUID, @Param('id') id: UUID) {
     const message = await this.messagesService.findById(id);

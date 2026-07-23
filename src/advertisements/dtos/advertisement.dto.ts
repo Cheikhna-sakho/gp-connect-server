@@ -1,3 +1,4 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { $Enums, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Type } from 'class-transformer';
@@ -53,12 +54,14 @@ export class AdvertisementDto
   @IsNumber()
   @Type(() => Number)
   @Min(0)
+  @ApiProperty({ type: Number })
   price: Decimal;
 
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
   @Min(0)
+  @ApiProperty({ type: Number })
   maxWeight: Decimal;
 
   @IsUUID()

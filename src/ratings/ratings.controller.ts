@@ -1,3 +1,11 @@
+import {
+  ApiBadRequestResponse,
+  ApiConflictResponse,
+  ApiForbiddenResponse,
+  ApiNotFoundResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { ApiAuth } from 'src/common/decorators/api-auth.decorator';
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { RatingsService } from './ratings.service';
 import { GetUserId } from 'src/common/decorators/user.decorator';
@@ -8,10 +16,20 @@ import { RatingEntity } from './entities/rating.entity';
 import { SetIdParam } from 'src/common/constants/route.util.const';
 import { Public } from 'src/common/decorators/public.decorator';
 
+@ApiTags('ratings')
 @Controller('ratings')
 export class RatingsController {
   constructor(private readonly ratingsService: RatingsService) {}
 
+  @ApiAuth()
+  @ApiNotFoundResponse({ description: 'Mission inconnue' })
+  @ApiBadRequestResponse({
+    description: 'Mission non COMPLETED ou sans transporteur',
+  })
+  @ApiForbiddenResponse({ description: 'Non-participant de la mission' })
+  @ApiConflictResponse({
+    description: 'Mission déjà notée par cet utilisateur',
+  })
   @Post(`mission/${SetIdParam('missionId')}`)
   @Serialize(RatingEntity)
   create(
@@ -22,6 +40,8 @@ export class RatingsController {
     return this.ratingsService.create(missionId, userId, data);
   }
 
+  @ApiAuth()
+  @ApiForbiddenResponse({ description: 'Non-participant de la mission' })
   @Get(`mission/${SetIdParam('missionId')}`)
   @Serialize(RatingEntity)
   getByMission(
@@ -32,6 +52,7 @@ export class RatingsController {
   }
 
   // Ratings received by the authenticated user (for their profile/dashboard)
+  @ApiAuth()
   @Get('received')
   getReceived(@GetUserId() userId: UUID) {
     return this.ratingsService.findByUser(userId);

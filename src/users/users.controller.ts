@@ -1,4 +1,10 @@
 import {
+  ApiBadRequestResponse,
+  ApiConflictResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { ApiAuth } from 'src/common/decorators/api-auth.decorator';
+import {
   BadRequestException,
   Body,
   Controller,
@@ -31,7 +37,7 @@ import { UserPreferencesEntity } from './entities/user-preferences.entity';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { MediaEntity } from 'src/medias/entities/media.entity';
-import { UpdateUserDto } from './dtos/update-user-dto';
+import { UpdateUserDto } from './dtos/update-user.dto';
 import { UpdateProfileDto } from './dtos/update-profile.dto';
 import { UpdatePreferencesDto } from './dtos/update-preferences.dto';
 import { AddressEntity } from 'src/addresses/entities/addresses.entity';
@@ -54,6 +60,8 @@ const AVATAR_UPLOAD_OPTIONS = {
   },
 };
 
+@ApiTags('users')
+@ApiAuth()
 @Controller('users')
 export class UsersController {
   constructor(readonly usersService: UsersService) {}
@@ -87,6 +95,7 @@ export class UsersController {
     return this.usersService.createAvatar(id, avatar);
   }
 
+  @ApiBadRequestResponse({ description: 'Code invalide ou expiré' })
   @Post('verify/email')
   @HttpCode(HttpStatus.NO_CONTENT)
   verifyEmail(@Query('token') token: string) {
@@ -101,6 +110,10 @@ export class UsersController {
 
   // Mise à jour de SON propre compte : DTO restreint (pas de role=ADMIN,
   // pas de *VerifiedAt, pas de password/id/timestamps).
+  /** Profil. Un changement d'email part en pendingEmail (double confirmation). */
+  @ApiConflictResponse({
+    description: 'Email ou téléphone déjà utilisé par un autre compte',
+  })
   @Patch()
   @HttpCode(HttpStatus.NO_CONTENT)
   update(@GetUserId() id: UUID, @Body() data: UpdateProfileDto) {

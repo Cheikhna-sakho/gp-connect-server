@@ -1,3 +1,4 @@
+import { ApiProperty } from '@nestjs/swagger';
 // import { Address } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Expose, Transform, Type } from 'class-transformer';
@@ -51,10 +52,12 @@ export class AddressEntity implements Address {
 
   @Type(() => Number)
   @Expose()
+  @ApiProperty({ type: Number })
   latitude: Decimal;
 
   @Type(() => Number)
   @Expose()
+  @ApiProperty({ type: Number })
   longitude: Decimal;
 
   @Type(() => Date)

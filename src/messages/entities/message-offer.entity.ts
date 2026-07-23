@@ -1,3 +1,4 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { $Enums, MessageOffer } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Expose, Type } from 'class-transformer';
@@ -8,10 +9,12 @@ export class MessageOfferEntity implements MessageOffer {
 
   @Type(() => Number)
   @Expose()
+  @ApiProperty({ type: Number })
   price: Decimal;
 
   @Type(() => Number)
   @Expose()
+  @ApiProperty({ type: Number })
   weight: Decimal;
 
   @Expose() messageId: string;

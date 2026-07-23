@@ -1,4 +1,4 @@
-import { PickType } from '@nestjs/mapped-types';
+import { PickType } from '@nestjs/swagger';
 import { Prisma } from '@prisma/client';
 import { IsEmpty, IsUUID } from 'class-validator';
 import { MissionDto } from 'src/missions/dtos/mission.dto';

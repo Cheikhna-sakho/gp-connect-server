@@ -1,4 +1,10 @@
 import {
+  ApiBadRequestResponse,
+  ApiForbiddenResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { ApiAuth } from 'src/common/decorators/api-auth.decorator';
+import {
   Body,
   Controller,
   Delete,
@@ -21,6 +27,8 @@ import { ConversationEntity } from './entities/conversation.entity';
 import { CreateConversationDto } from './dtos/create-conversation.dto';
 import { AdvertisementsService } from 'src/advertisements/advertisements.service';
 
+@ApiTags('conversations')
+@ApiAuth()
 @Controller('conversations')
 export class ConversationsController {
   constructor(
@@ -61,6 +69,12 @@ export class ConversationsController {
     return conv;
   }
 
+  @ApiForbiddenResponse({
+    description: 'Interaction indisponible (blocage entre les parties)',
+  })
+  @ApiBadRequestResponse({
+    description: 'Annonce inconnue ou conversation avec soi-même',
+  })
   @Post()
   @Serialize(ConversationEntity)
   async create(@Body() data: CreateConversationDto, @GetUserId() userId: UUID) {
@@ -93,6 +107,7 @@ export class ConversationsController {
     return this.conversationsService.create({ ...data, ...payload });
   }
 
+  @ApiForbiddenResponse({ description: 'Non-participant de la conversation' })
   @Delete(ID_PARAM)
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(@GetUserId() userId: UUID, @Param('id') id: UUID) {

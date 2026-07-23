@@ -1,4 +1,4 @@
-import { PartialType } from '@nestjs/mapped-types';
+import { PartialType } from '@nestjs/swagger';
 import { $Enums } from '@prisma/client';
 import { AdvertisementDto } from './advertisement.dto';
 import { IsEmpty } from 'class-validator';
