@@ -34,8 +34,13 @@ import {
 // AUTH_THROTTLE_LIMIT (ex. tests). La prod garde la valeur sûre par défaut.
 const AUTH_THROTTLE_LIMIT = Number(process.env.AUTH_THROTTLE_LIMIT) || 5;
 const AUTH_THROTTLE = { default: { limit: AUTH_THROTTLE_LIMIT, ttl: 60_000 } };
-// Spécifique OTP : correspond à la durée de vie du code (15 min)
-const OTP_THROTTLE = { default: { limit: 5, ttl: 900_000 } };
+// Spécifique OTP : fenêtre alignée sur la durée de vie du code (15 min).
+// Même desserrage env que le login : le compteur est PAR IP, donc en e2e
+// (tout vient de ::1) les re-logins des sessions auto-réparantes épuisaient
+// les 5 essais en un run UI → 429 en chaîne. La prod garde 5/15 min.
+const OTP_THROTTLE = {
+  default: { limit: AUTH_THROTTLE_LIMIT, ttl: 900_000 },
+};
 
 const IS_PROD = process.env.NODE_ENV === 'production';
 
