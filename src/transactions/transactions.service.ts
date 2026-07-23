@@ -41,10 +41,14 @@ export class TransactionsService {
 
     // Only the shipper pays — only they can change the payment method
     if (tx.mission.shipperId !== userId) {
-      throw new ForbiddenException('Only the shipper can update the payment method');
+      throw new ForbiddenException(
+        'Only the shipper can update the payment method',
+      );
     }
     if (tx.status !== 'PENDING') {
-      throw new BadRequestException('Cannot update a transaction that is not pending');
+      throw new BadRequestException(
+        'Cannot update a transaction that is not pending',
+      );
     }
 
     return this.transactions.update({ where: { id }, data });
