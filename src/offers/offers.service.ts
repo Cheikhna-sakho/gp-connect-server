@@ -125,10 +125,17 @@ export class OffersService {
         );
       }
 
-      await tx.mission.update({
-        where: { id: missionId },
+      // Verrou optimiste : le WHERE porte le statut — deux acceptations
+      // concurrentes (deux offres PENDING) ne peuvent pas écrire toutes deux.
+      const { count } = await tx.mission.updateMany({
+        where: { id: missionId, status: 'PENDING' },
         data: { carrierId, negotiatedPrice: offer.price, status: 'ACCEPTED' },
       });
+      if (count === 0) {
+        throw new BadRequestException(
+          'This conversation already has an accepted offer',
+        );
+      }
 
       await tx.advertisement.update({
         where: { id: mission.advertisementId },

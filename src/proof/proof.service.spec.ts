@@ -26,7 +26,11 @@ const validProof = (over: Record<string, unknown> = {}) => ({
 
 const makeDb = () => {
   const tx = {
-    missionProof: { update: jest.fn(), findUnique: jest.fn() },
+    missionProof: {
+      update: jest.fn(),
+      findUnique: jest.fn(),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
     missionPackage: {
       findMany: jest.fn().mockResolvedValue([{ packageId: 'pk1' }]),
     },
@@ -169,9 +173,10 @@ describe('ProofService', () => {
         verifiedById: CARRIER,
       });
 
-      expect(db.__tx.missionProof.update).toHaveBeenCalledWith(
+      // Verrou anti double-emploi : le WHERE porte otpUsedAt null.
+      expect(db.__tx.missionProof.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: 'p1' },
+          where: { id: 'p1', otpUsedAt: null },
           data: expect.objectContaining({ verifiedById: CARRIER }),
         }),
       );

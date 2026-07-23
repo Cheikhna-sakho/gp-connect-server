@@ -16,7 +16,7 @@ const makeDb = () => {
     mission: {
       findUnique: jest.fn(),
       update: jest.fn(),
-      updateMany: jest.fn(),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     advertisement: { update: jest.fn() },
     messageOffer: {
@@ -155,9 +155,10 @@ describe('OffersService', () => {
 
       const res = await acceptAsShipper();
 
-      // mission passe en ACCEPTED avec carrier + prix négocié
-      expect(db.__tx.mission.update).toHaveBeenCalledWith({
-        where: { id: MISSION },
+      // mission passe en ACCEPTED avec carrier + prix négocié — verrou
+      // optimiste : le WHERE porte le statut PENDING
+      expect(db.__tx.mission.updateMany).toHaveBeenCalledWith({
+        where: { id: MISSION, status: 'PENDING' },
         data: { carrierId: CARRIER, negotiatedPrice: 120, status: 'ACCEPTED' },
       });
       // annonce IN_PROGRESS

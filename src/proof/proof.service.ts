@@ -132,11 +132,22 @@ export class ProofService {
       throw new BadRequestException('Invalid code');
     }
 
-    return this.databaseService.$transaction(async (tx) => {
-      await tx.missionProof.update({
-        where: { id: proof.id },
+    // Les événements sont émis APRÈS le commit : émettre dans la transaction
+    // annoncerait « preuve vérifiée » à des clients alors qu'un rollback peut
+    // encore tout annuler.
+    const events: { name: string; payload: unknown }[] = [];
+
+    const verified = await this.databaseService.$transaction(async (tx) => {
+      // Verrou optimiste : deux soumissions concurrentes du même code valide
+      // ne peuvent pas transiter la mission deux fois — seule la première
+      // écriture matche (otpUsedAt encore null).
+      const { count } = await tx.missionProof.updateMany({
+        where: { id: proof.id, otpUsedAt: null },
         data: { otpUsedAt: new Date(), verifiedById },
       });
+      if (count === 0) {
+        throw new BadRequestException('This code has already been used');
+      }
 
       const missionPackages = await tx.missionPackage.findMany({
         where: { missionId },
@@ -190,10 +201,13 @@ export class ProofService {
         where: { missionId },
         select: { id: true },
       });
-      this.eventEmitter.emit('proof.verified', {
-        missionId,
-        type,
-        conversationIds: conversations.map((c) => c.id),
+      events.push({
+        name: 'proof.verified',
+        payload: {
+          missionId,
+          type,
+          conversationIds: conversations.map((c) => c.id),
+        },
       });
 
       // When delivery is confirmed, both carrier and shipper stats change
@@ -203,16 +217,24 @@ export class ProofService {
           select: { shipperId: true, carrierId: true },
         });
         if (completedMission) {
-          this.eventEmitter.emit('stats.updated', {
-            userIds: [
-              completedMission.shipperId,
-              completedMission.carrierId,
-            ].filter(Boolean),
+          events.push({
+            name: 'stats.updated',
+            payload: {
+              userIds: [
+                completedMission.shipperId,
+                completedMission.carrierId,
+              ].filter(Boolean),
+            },
           });
         }
       }
 
       return updatedProof;
     });
+
+    for (const e of events) {
+      this.eventEmitter.emit(e.name, e.payload);
+    }
+    return verified;
   }
 }
