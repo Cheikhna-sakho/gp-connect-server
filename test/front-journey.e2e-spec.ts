@@ -94,11 +94,17 @@ describe('Parcours front simulé côté API (cookies + CSRF)', () => {
     });
 
     it('GET /advertisements/:id (détail) → 200 + auteur/villes présents', async () => {
-      const list = await request(server())
-        .get('/advertisements')
-        .query({ type: 'DELIVERY', page: 1 })
-        .expect(200);
-      const id = list.body.data[0].id;
+      // Cible une annonce du SEED (stable) : le premier élément de la liste
+      // globale est souvent l'annonce fraîche d'une suite e2e concurrente —
+      // supprimée entre la liste et le détail, le test devenait flaky.
+      const seedAd = await db.advertisement.findFirst({
+        where: {
+          type: 'DELIVERY',
+          author: { email: { endsWith: '@gpconnect.test' } },
+        },
+        select: { id: true },
+      });
+      const id = seedAd!.id;
 
       const { body } = await request(server())
         .get(`/advertisements/${id}`)
