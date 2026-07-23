@@ -7,6 +7,7 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import helmet from 'helmet';
+import { NextFunction, Request, Response } from 'express';
 import cookieParser from 'cookie-parser';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
@@ -17,7 +18,18 @@ async function bootstrap() {
 
   app.useWebSocketAdapter(new IoAdapter(app));
   app.use(cookieParser());
-  app.use(helmet());
+  // AdminJS (SPA servie par le back) repose sur des scripts inline
+  // (REDUX_STATE, bundles de composants) : la CSP stricte de l'API les
+  // bloque → écran blanc après login. On garde helmet partout, mais sans
+  // CSP sur /admin — le panel est env-gaté et derrière sa propre auth ;
+  // l'API, elle, ne sert pas de HTML, sa CSP stricte ne coûte rien.
+  const strictHelmet = helmet();
+  const adminHelmet = helmet({ contentSecurityPolicy: false });
+  app.use((req: Request, res: Response, next: NextFunction) =>
+    req.path.startsWith('/admin')
+      ? adminHelmet(req, res, next)
+      : strictHelmet(req, res, next),
+  );
 
   app.enableCors({
     origin: process.env.FRONTEND_URL ?? 'http://localhost:3000',
