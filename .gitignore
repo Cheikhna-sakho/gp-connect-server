@@ -8,3 +8,4 @@ pgdata
 infra
 *.tmp.js
 memoire.md
+.adminjs
