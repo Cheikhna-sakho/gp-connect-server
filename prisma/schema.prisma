@@ -72,6 +72,9 @@ enum MessageOfferStatus {
 model User {
   id        String  @id @default(uuid())
   email     String  @unique
+  // Changement d'email en attente : l'adresse active ne bascule qu'après
+  // confirmation du lien envoyé à la NOUVELLE adresse (double confirmation).
+  pendingEmail String? @map("pending_email")
   phone     String? @unique
   firstName String  @map("first_name")
   lastName  String  @map("last_name")

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -153,21 +154,68 @@ describe('UsersService', () => {
         where: { id: 't1' },
       });
     });
+
+    it('changement en attente : bascule email = pendingEmail, vérifié par construction', async () => {
+      db.verificationToken.findFirst.mockResolvedValue({
+        id: 't1',
+        userId: 'u1',
+        expiresAt: new Date(Date.now() + 10_000),
+        // Adresse actuelle déjà vérifiée — le pending doit primer sur
+        // l'idempotence « déjà vérifié ».
+        user: { emailVerifiedAt: new Date(), pendingEmail: 'new@x.com' },
+      });
+
+      await expect(service.verifyEmailToken('abc')).resolves.toBe(true);
+      const arg = db.user.update.mock.calls[0][0];
+      expect(arg.data.email).toBe('new@x.com');
+      expect(arg.data.pendingEmail).toBeNull();
+      expect(arg.data.emailVerifiedAt).toBeInstanceOf(Date);
+    });
+
+    it('course perdue à la bascule (P2002) → BadRequest explicite', async () => {
+      db.verificationToken.findFirst.mockResolvedValue({
+        id: 't1',
+        userId: 'u1',
+        expiresAt: new Date(Date.now() + 10_000),
+        user: { emailVerifiedAt: null, pendingEmail: 'new@x.com' },
+      });
+      db.$transaction.mockRejectedValue(
+        Object.assign(new Error('unique'), { code: 'P2002' }),
+      );
+
+      await expect(service.verifyEmailToken('abc')).rejects.toThrow(
+        'no longer available',
+      );
+    });
   });
 
   describe('updateById — intégrité de la vérification (KYC)', () => {
-    it("réinitialise emailVerifiedAt quand l'email change réellement", async () => {
+    it('email changé : bascule DIFFÉRÉE — pendingEmail écrit, email intact, vérif conservée', async () => {
+      // findUnique #1 : lecture du compte courant (updateById)
+      // findFirst : findByEmail (unicité) — personne ne détient la nouvelle adresse
       db.user.findUnique.mockResolvedValue({ email: 'old@x.com', phone: null });
+      db.user.findFirst.mockResolvedValue(null);
       db.user.update.mockResolvedValue({});
 
       await service.updateById('u1', { email: 'new@x.com' } as never);
 
       const arg = db.user.update.mock.calls[0][0];
-      expect(arg.data.emailVerifiedAt).toBeNull();
-      expect(arg.data.phoneVerifiedAt).toBeUndefined();
+      expect(arg.data.pendingEmail).toBe('new@x.com');
+      expect(arg.data.email).toBeUndefined();
+      expect(arg.data.emailVerifiedAt).toBeUndefined();
     });
 
-    it("ne réinitialise pas si l'email est identique", async () => {
+    it('email déjà pris par un autre compte → Conflict 409, sans écriture', async () => {
+      db.user.findUnique.mockResolvedValue({ email: 'old@x.com', phone: null });
+      db.user.findFirst.mockResolvedValue({ id: 'autre' });
+
+      await expect(
+        service.updateById('u1', { email: 'taken@x.com' } as never),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(db.user.update).not.toHaveBeenCalled();
+    });
+
+    it("ne déclenche rien si l'email est identique", async () => {
       db.user.findUnique.mockResolvedValue({
         email: 'same@x.com',
         phone: null,
@@ -177,7 +225,19 @@ describe('UsersService', () => {
       await service.updateById('u1', { email: 'same@x.com' } as never);
 
       const arg = db.user.update.mock.calls[0][0];
+      expect(arg.data.pendingEmail).toBeUndefined();
       expect(arg.data.emailVerifiedAt).toBeUndefined();
+    });
+
+    it('P2002 à l’écriture (téléphone déjà pris) → Conflict 409', async () => {
+      db.user.findUnique.mockResolvedValue({ email: 'a@x.com', phone: null });
+      db.user.update.mockRejectedValue(
+        Object.assign(new Error('unique'), { code: 'P2002' }),
+      );
+
+      await expect(
+        service.updateById('u1', { phone: '+221770000000' } as never),
+      ).rejects.toBeInstanceOf(ConflictException);
     });
 
     it('réinitialise phoneVerifiedAt quand le téléphone change', async () => {

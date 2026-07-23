@@ -1,6 +1,8 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -34,6 +36,7 @@ export class UsersService {
   private users: DatabaseService['user'];
   private avatar: DatabaseService['userAvatar'];
   private verificationToken: DatabaseService['verificationToken'];
+  private readonly logger = new Logger(UsersService.name);
 
   constructor(
     private readonly databaseService: DatabaseService,
@@ -103,25 +106,60 @@ export class UsersService {
   async updateById(id: string, data: UpdateUserDto) {
     data.password &&= await this.hashPassword(data.password as string);
 
-    // Changer d'email/téléphone invalide la vérification correspondante : le
-    // nouveau contact n'est pas prouvé. Sans ça, un statut « vérifié » (badge
-    // trust, canal OTP) survivrait sur un contact qu'on ne contrôle plus.
-    // On ne réinitialise que si la valeur change réellement.
+    // Email : double confirmation. L'adresse active (= identifiant de login)
+    // ne bascule JAMAIS ici — le nouvel email part en `pendingEmail` et un
+    // lien de confirmation est envoyé À LA NOUVELLE adresse ; la bascule a
+    // lieu dans verifyEmailToken. Une faute de frappe ne peut donc pas
+    // couper l'accès au compte, et le badge « vérifié » reste honnête.
+    // Téléphone : bascule immédiate mais vérification invalidée (OTP SMS à
+    // refaire) — même logique KYC qu'avant.
+    const { email, ...rest } = data;
     const resets: Prisma.UserUpdateInput = {};
-    if (data.email !== undefined || data.phone !== undefined) {
+    let pendingEmail: string | undefined;
+    if (email !== undefined || rest.phone !== undefined) {
       const current = await this.users.findUnique({
         where: { id },
         select: { email: true, phone: true },
       });
-      if (data.email !== undefined && data.email !== current?.email) {
-        resets.emailVerifiedAt = null;
+      if (email !== undefined && email !== current?.email) {
+        const taken = await this.findByEmail(email);
+        if (taken && taken.id !== id) {
+          throw new ConflictException('Email already in use');
+        }
+        pendingEmail = email;
       }
-      if (data.phone !== undefined && data.phone !== current?.phone) {
+      if (rest.phone !== undefined && rest.phone !== current?.phone) {
         resets.phoneVerifiedAt = null;
       }
     }
 
-    return this.users.update({ where: { id }, data: { ...data, ...resets } });
+    let updated;
+    try {
+      updated = await this.users.update({
+        where: { id },
+        data: {
+          ...rest,
+          ...resets,
+          ...(pendingEmail ? { pendingEmail } : {}),
+        },
+      });
+    } catch (e) {
+      // Unicité (email/téléphone déjà pris) → 409 propre, pas un 500.
+      if ((e as { code?: string })?.code === 'P2002') {
+        throw new ConflictException('Email or phone already in use');
+      }
+      throw e;
+    }
+
+    // Envoi du lien de confirmation à la nouvelle adresse — jamais bloquant
+    // pour le PATCH (l'utilisateur peut re-demander via « renvoyer »).
+    if (pendingEmail) {
+      void this.sendEmailVerification(id).catch((err) =>
+        this.logger.warn(`Email de confirmation non envoyé: ${err}`),
+      );
+    }
+
+    return updated;
   }
   async delete(where: Delete) {
     // `return` obligatoire : sans lui la suppression partait sans être
@@ -245,7 +283,10 @@ export class UsersService {
   }
   async sendEmailVerification(userId: string) {
     const user = await this.users.findUnique({ where: { id: userId } });
-    if (!user || user.emailVerifiedAt) return;
+    // Un changement en attente prime : le lien part à la NOUVELLE adresse
+    // (c'est elle qu'il faut prouver), même si l'actuelle est déjà vérifiée.
+    if (!user) return;
+    if (!user.pendingEmail && user.emailVerifiedAt) return;
     const { hash, token } = generateEmailToken();
     await this.verificationToken.create({
       data: {
@@ -255,7 +296,10 @@ export class UsersService {
         expiresAt: new Date(Date.now() + HOUR_IN_MS),
       },
     });
-    return this.mailService.sendEmailVerification(user.email, token);
+    return this.mailService.sendEmailVerification(
+      user.pendingEmail ?? user.email,
+      token,
+    );
   }
 
   async verifyEmailToken(token: string) {
@@ -268,20 +312,42 @@ export class UsersService {
         userId: true,
         id: true,
         expiresAt: true,
-        user: { select: { emailVerifiedAt: true } },
+        user: { select: { emailVerifiedAt: true, pendingEmail: true } },
       },
     });
 
     if (!record) throw new BadRequestException('Invalid token');
-    if (record?.user?.emailVerifiedAt) return true;
+    const pending = record.user?.pendingEmail;
+    // Lien rejoué sans changement en attente : idempotent.
+    if (!pending && record.user?.emailVerifiedAt) return true;
     if (record.expiresAt < now) throw new BadRequestException('Token expired');
-    await this.databaseService.$transaction([
-      this.users.update({
-        where: { id: record.userId },
-        data: { emailVerifiedAt: new Date() },
-      }),
-      this.verificationToken.delete({ where: { id: record.id } }),
-    ]);
+    try {
+      await this.databaseService.$transaction([
+        this.users.update({
+          where: { id: record.userId },
+          // Changement d'email en attente : la bascule a lieu ICI, une fois
+          // le contrôle de la nouvelle adresse prouvé par le clic — et elle
+          // est vérifiée par construction.
+          data: pending
+            ? {
+                email: pending,
+                pendingEmail: null,
+                emailVerifiedAt: new Date(),
+              }
+            : { emailVerifiedAt: new Date() },
+        }),
+        this.verificationToken.delete({ where: { id: record.id } }),
+      ]);
+    } catch (e) {
+      // Course : l'adresse a été prise par un autre compte entre la demande
+      // et le clic (pendingEmail n'est pas unique — c'est ici que ça se joue).
+      if ((e as { code?: string })?.code === 'P2002') {
+        throw new BadRequestException(
+          'This email address is no longer available',
+        );
+      }
+      throw e;
+    }
 
     return true;
   }

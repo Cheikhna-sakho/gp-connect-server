@@ -27,6 +27,9 @@ export class UserEntity implements UserI {
 
   @Expose() email: string;
 
+  // Changement d'email en attente de confirmation (affiché dans les réglages)
+  @Expose() pendingEmail: string | null;
+
   @Expose() role: $Enums.Role;
 
   @Expose() updatedAt: Date;

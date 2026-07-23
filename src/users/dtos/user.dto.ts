@@ -25,6 +25,11 @@ export class UserDto implements User {
   @IsEmail()
   email: string;
 
+  // Jamais settable par le client : posé par updateById, consommé par
+  // verifyEmailToken (bascule différée du changement d'email).
+  @IsEmpty()
+  pendingEmail: string;
+
   @IsPhoneNumber()
   @IsOptional()
   phone: string;
