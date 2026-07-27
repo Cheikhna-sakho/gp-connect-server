@@ -392,6 +392,11 @@ export class UsersService {
       userId,
       VerificationTokenType.PHONE,
     );
+    // Compte inscrit sans téléphone : un OTP « par SMS » est impossible →
+    // 400 explicite plutôt qu'un 500 Twilio (« params['to'] missing »).
+    if (!phone) {
+      throw new BadRequestException('No phone number on this account');
+    }
     return this.phoneService.sendPhoneVerification(phone, token);
   }
   async sendEmailOpt(userId: string) {
