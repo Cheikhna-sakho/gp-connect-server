@@ -1,23 +1,15 @@
-import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { Twilio } from 'twilio';
+import { Inject, Injectable } from '@nestjs/common';
+import { SMS_SENDER, SmsPort } from './sms.port';
 
 @Injectable()
 export class PhoneService {
-  private client: Twilio;
-
-  constructor(private readonly config: ConfigService) {
-    this.client = new Twilio(
-      this.config.get('TWILIO_SID'),
-      this.config.get('TWILIO_AUTH_TOKEN'),
-    );
-  }
+  constructor(@Inject(SMS_SENDER) private readonly sms: SmsPort) {}
 
   async sendPhoneVerification(phone: string, code: string) {
-    return this.sendSms(
-      phone,
-      `Votre code de vérification GPConnect est : ${code}`,
-    );
+    return this.sms.send({
+      to: phone,
+      body: `Votre code de vérification GPConnect est : ${code}`,
+    });
   }
 
   /**
@@ -29,21 +21,9 @@ export class PhoneService {
       hour: '2-digit',
       minute: '2-digit',
     });
-    return this.sendSms(
-      phone,
-      `GPConnect — un colis arrive pour vous. À la remise, donnez ce code au transporteur : ${code} (valable jusqu'à ${time}).`,
-    );
-  }
-
-  private async sendSms(phone: string, body: string) {
-    if (this.config.get('NODE_ENV') === 'development') {
-      console.log({ to: phone, body });
-      return;
-    }
-    return this.client.messages.create({
-      from: this.config.get('TWILIO_FROM'),
+    return this.sms.send({
       to: phone,
-      body,
+      body: `GPConnect — un colis arrive pour vous. À la remise, donnez ce code au transporteur : ${code} (valable jusqu'à ${time}).`,
     });
   }
 }
