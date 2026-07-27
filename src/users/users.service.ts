@@ -53,7 +53,15 @@ export class UsersService {
   }
   async create({ data }: Create) {
     data.password &&= await this.hashPassword(data.password as string);
-    return this.users.create({ data });
+    try {
+      return await this.users.create({ data });
+    } catch (e) {
+      // Unicité (email/téléphone déjà pris) → 409 propre, pas un 500.
+      if ((e as { code?: string })?.code === 'P2002') {
+        throw new ConflictException('Email or phone already in use');
+      }
+      throw e;
+    }
   }
   async createAvatar(userId: UUID, image: Express.Multer.File) {
     const existing = await this.avatar.findUnique({

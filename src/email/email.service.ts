@@ -1,11 +1,11 @@
-import { Injectable } from '@nestjs/common';
-import { MailerService } from '@nestjs-modules/mailer';
+import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { MAILER, MailerPort } from './mailer.port';
 
 @Injectable()
 export class EmailService {
   constructor(
-    private readonly mailerService: MailerService,
+    @Inject(MAILER) private readonly mailer: MailerPort,
     private readonly config: ConfigService,
   ) {}
 
@@ -42,7 +42,7 @@ export class EmailService {
       </div>
     `;
 
-    return this.mailerService.sendMail({
+    return this.mailer.send({
       to,
       subject: 'Confirmez votre email',
       html,
@@ -77,7 +77,7 @@ export class EmailService {
         <p>— L’équipe GPConnect</p>
       </div>
     `;
-    return this.mailerService.sendMail({
+    return this.mailer.send({
       to,
       subject: 'Votre offre a été acceptée 🎉',
       html,
@@ -122,7 +122,7 @@ export class EmailService {
         <p>— L’équipe GPConnect</p>
       </div>
     `;
-    return this.mailerService.sendMail({
+    return this.mailer.send({
       to,
       subject: 'Un litige a été ouvert sur votre mission',
       html,
@@ -166,7 +166,7 @@ export class EmailService {
         <p>— L’équipe GPConnect</p>
       </div>
     `;
-    return this.mailerService.sendMail({
+    return this.mailer.send({
       to,
       subject: 'Votre litige a été résolu',
       html,
@@ -183,7 +183,7 @@ export class EmailService {
       console.log({ token });
       return;
     }
-    return this.mailerService.sendMail({
+    return this.mailer.send({
       to,
       subject: 'Mot de passe a usage unique',
       html,
