@@ -14,8 +14,11 @@ WORKDIR /app
 
 # Pas de package-lock.json -> npm install.
 # On retire le hook `prepare` (husky) inutile en conteneur avant l'install.
+# --legacy-peer-deps : @adminjs/prisma@3 (dernière version CJS) déclare un peer
+# @prisma/client ^4 mais fonctionne avec le 5 ; pnpm (utilisé en local) ne
+# bloque pas sur ce conflit, npm si.
 COPY package*.json ./
-RUN npm pkg delete scripts.prepare && npm install
+RUN npm pkg delete scripts.prepare && npm install --legacy-peer-deps
 
 COPY . .
 # `npm run build` = prisma generate + nest build -> dist/
@@ -37,7 +40,7 @@ RUN apt-get update && \
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm pkg delete scripts.prepare && npm install --omit=dev
+RUN npm pkg delete scripts.prepare && npm install --omit=dev --legacy-peer-deps
 
 # Client Prisma généré + app compilée + schéma/migrations
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
