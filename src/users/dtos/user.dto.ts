@@ -1,4 +1,5 @@
 import { $Enums, User } from '@prisma/client';
+import { ToE164 } from 'src/common/decorators/to-e164.decorator';
 import {
   IsDate,
   IsEmail,
@@ -30,6 +31,7 @@ export class UserDto implements User {
   @IsEmpty()
   pendingEmail: string;
 
+  @ToE164()
   @IsPhoneNumber()
   @IsOptional()
   phone: string;

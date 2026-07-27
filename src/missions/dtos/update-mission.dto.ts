@@ -1,4 +1,5 @@
 import { $Enums } from '@prisma/client';
+import { ToE164 } from 'src/common/decorators/to-e164.decorator';
 import {
   IsEnum,
   IsOptional,
@@ -24,6 +25,7 @@ export class UpdateMissionDto {
   recipientName?: string;
 
   @IsOptional()
+  @ToE164()
   @IsPhoneNumber()
   recipientPhone?: string;
 }

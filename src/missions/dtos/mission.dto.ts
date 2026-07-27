@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { $Enums, Mission } from '@prisma/client';
+import { ToE164 } from 'src/common/decorators/to-e164.decorator';
 import { Decimal } from '@prisma/client/runtime/library';
 import {
   IsArray,
@@ -36,6 +37,7 @@ export class MissionDto implements Mission {
   recipientName: string;
 
   @IsOptional()
+  @ToE164()
   @IsPhoneNumber()
   recipientPhone: string;
 

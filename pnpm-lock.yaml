@@ -102,6 +102,9 @@ importers:
       image-size:
         specifier: ^1.2.0
         version: 1.2.0
+      libphonenumber-js:
+        specifier: ^1.13.9
+        version: 1.13.9
       multer:
         specifier: 1.4.5-lts.1
         version: 1.4.5-lts.1
@@ -4113,8 +4116,8 @@ packages:
     resolution: {integrity: sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ==}
     engines: {node: '>= 0.8.0'}
 
-  libphonenumber-js@1.10.61:
-    resolution: {integrity: sha512-TsQsyzDttDvvzWNkbp/i0fVbzTGJIG0mUu/uNalIaRQEYeJxVQ/FPg+EJgSqfSXezREjM0V3RZ8cLVsKYhhw0Q==}
+  libphonenumber-js@1.13.9:
+    resolution: {integrity: sha512-VNS5vWMM7r0P66BYv+TQJATxExEgLxN+34hfHDVhDkUsGAE4cRg0shCNSLTXNKm7nIUscC7AfB51TjxEeF7msQ==}
 
   lines-and-columns@1.2.4:
     resolution: {integrity: sha512-7ylylesZQ/PV29jhEDl3Ufjo6ZX7gCqJr5F7PKrqc93v7fzSymt1BpwEU8nAUXs8qzzvqhbjhK5QZg6Mt/HkBg==}
@@ -8918,7 +8921,7 @@ snapshots:
   class-validator@0.14.1:
     dependencies:
       '@types/validator': 13.11.9
-      libphonenumber-js: 1.10.61
+      libphonenumber-js: 1.13.9
       validator: 13.11.0
 
   classnames@2.5.1: {}
@@ -10552,7 +10555,7 @@ snapshots:
       prelude-ls: 1.2.1
       type-check: 0.4.0
 
-  libphonenumber-js@1.10.61: {}
+  libphonenumber-js@1.13.9: {}
 
   lines-and-columns@1.2.4: {}
 
