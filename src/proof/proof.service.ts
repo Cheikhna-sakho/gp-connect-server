@@ -10,6 +10,7 @@ import { DatabaseService } from 'src/database/database.service';
 import { generateOtp, verifyOtp } from 'src/common/utils/otp.util';
 import { ProofDto } from './dtos/proof.dto';
 import { MediasService } from 'src/medias/medias.service';
+import { PhoneService } from 'src/phone/phone.service';
 
 type ProofEvent = { name: string; payload: unknown };
 
@@ -25,6 +26,7 @@ export class ProofService {
     private readonly databaseService: DatabaseService,
     private readonly eventEmitter: EventEmitter2,
     private readonly mediasService: MediasService,
+    private readonly phoneService: PhoneService,
   ) {
     this.proofs = this.databaseService.missionProof;
   }
@@ -80,6 +82,63 @@ export class ProofService {
     });
 
     return { code: plain, expiresAt };
+  }
+
+  /**
+   * Génération du code de livraison par le shipper (mission IN_TRANSIT).
+   * Si un destinataire est renseigné, le code lui part par SMS et n'est PAS
+   * renvoyé à l'expéditeur : sinon il pourrait auto-confirmer la livraison
+   * sans remise réelle. On ne retombe sur l'affichage côté expéditeur que
+   * s'il n'y a pas de destinataire joignable.
+   */
+  async generateDeliveryCode(missionId: string, requesterId: string) {
+    const mission = await this.databaseService.mission.findUnique({
+      where: { id: missionId },
+      select: {
+        status: true,
+        shipperId: true,
+        carrierId: true,
+        recipientPhone: true,
+      },
+    });
+    if (!mission) throw new NotFoundException();
+    // Le code de livraison se génère pendant le transport (le pickup vérifié
+    // a déjà fait passer la mission en IN_TRANSIT)
+    if (mission.status !== 'IN_TRANSIT') {
+      throw new BadRequestException(
+        'Mission must be in transit before generating a delivery proof',
+      );
+    }
+    if (mission.shipperId !== requesterId) throw new ForbiddenException();
+    if (!mission.carrierId)
+      throw new BadRequestException('No carrier assigned to this mission yet');
+
+    const otp = await this.create({
+      missionId,
+      type: 'DELIVERY',
+      createdById: mission.shipperId,
+      verifiedById: mission.carrierId,
+    });
+
+    let sentToRecipient = false;
+    if (mission.recipientPhone) {
+      try {
+        await this.phoneService.sendDeliveryCode(
+          mission.recipientPhone,
+          otp.code,
+          otp.expiresAt,
+        );
+        sentToRecipient = true;
+      } catch {
+        // L'échec du SMS ne doit pas bloquer la génération : le shipper
+        // garde le code à l'écran et peut le transmettre lui-même.
+      }
+    }
+
+    if (sentToRecipient) {
+      return { expiresAt: otp.expiresAt, sentToRecipient };
+    }
+    return { ...otp, sentToRecipient };
   }
 
   // Called by Carrier — enters the code received from Shipper

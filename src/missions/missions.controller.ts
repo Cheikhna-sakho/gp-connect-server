@@ -42,7 +42,6 @@ import { MissionEntity } from './entities/mission.entity';
 import { ProofEntity } from 'src/proof/entities/proof.entity';
 import { ProofOtpEntity } from 'src/proof/entities/proof-otp.entity';
 import { VerifyProofDto } from 'src/proof/dtos/verify-proof.dto';
-import { PhoneService } from 'src/phone/phone.service';
 
 @ApiTags('missions')
 @ApiAuth()
@@ -51,7 +50,6 @@ export class MissionsController {
   constructor(
     private readonly missionsService: MissionsService,
     private readonly proofsService: ProofService,
-    private readonly phoneService: PhoneService,
   ) {}
 
   @UseGuards(RolesGuard)
@@ -141,54 +139,13 @@ export class MissionsController {
 
   @Post(':id/proof/delivery')
   @Serialize(ProofOtpEntity)
-  async createDeliveryProof(
+  createDeliveryProof(
     @GetUserId() userId: UUID,
     @Param('id') missionId: string,
   ) {
-    const mission = await this.missionsService.findOne(missionId as UUID);
-    if (!mission) throw new NotFoundException();
-    // Le code de livraison se génère pendant le transport (le pickup vérifié
-    // a déjà fait passer la mission en IN_TRANSIT)
-    if (mission.status !== 'IN_TRANSIT') {
-      throw new BadRequestException(
-        'Mission must be in transit before generating a delivery proof',
-      );
-    }
-    if (mission.shipperId !== userId) throw new ForbiddenException();
-    if (!mission.carrierId)
-      throw new BadRequestException('No carrier assigned to this mission yet');
-    const otp = await this.proofsService.create({
-      missionId,
-      type: 'DELIVERY',
-      createdById: mission.shipperId,
-      verifiedById: mission.carrierId,
-    });
-
-    // Si un destinataire est renseigné, le code lui part directement par SMS :
-    // c'est lui qui le remettra au transporteur à destination.
-    let sentToRecipient = false;
-    if (mission.recipientPhone) {
-      try {
-        await this.phoneService.sendDeliveryCode(
-          mission.recipientPhone,
-          otp.code,
-          otp.expiresAt,
-        );
-        sentToRecipient = true;
-      } catch {
-        // L'échec du SMS ne doit pas bloquer la génération : le shipper
-        // garde le code à l'écran et peut le transmettre lui-même.
-      }
-    }
-
-    // Le destinataire a reçu le code → on ne le renvoie PAS à l'expéditeur :
-    // sinon il pourrait auto-confirmer la livraison sans remise réelle. On ne
-    // retombe sur l'affichage côté expéditeur que s'il n'y a pas de
-    // destinataire joignable (il transmettra alors le code lui-même).
-    if (sentToRecipient) {
-      return { expiresAt: otp.expiresAt, sentToRecipient };
-    }
-    return { ...otp, sentToRecipient };
+    // Règle métier (SMS destinataire, code non renvoyé au shipper) : dans
+    // ProofService.generateDeliveryCode — le contrôleur ne fait que déléguer.
+    return this.proofsService.generateDeliveryCode(missionId, userId);
   }
 
   // ─── Proof verification (Carrier) ─────────────────────────────────────────

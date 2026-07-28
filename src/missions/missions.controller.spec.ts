@@ -7,7 +7,6 @@ import { UUID } from 'crypto';
 import { MissionsController } from './missions.controller';
 import { MissionsService } from './missions.service';
 import { ProofService } from 'src/proof/proof.service';
-import { PhoneService } from 'src/phone/phone.service';
 
 // Test unitaire du contrôleur : services mockés. On verrouille les GARDES
 // (participant, machine à états manuelle, blocage des champs dérivés serveur,
@@ -49,11 +48,7 @@ describe('MissionsController', () => {
       verifyPackagesOwnership: jest.fn(),
     } as never;
     proofs = { create: jest.fn().mockResolvedValue({}) } as never;
-    controller = new MissionsController(
-      missions as never,
-      proofs as never,
-      { sendDeliveryCode: jest.fn() } as never as PhoneService,
-    );
+    controller = new MissionsController(missions as never, proofs as never);
   });
 
   describe('update', () => {

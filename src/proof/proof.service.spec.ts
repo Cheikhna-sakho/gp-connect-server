@@ -63,7 +63,12 @@ describe('ProofService', () => {
     jest.clearAllMocks();
     db = makeDb();
     emitter = { emit: jest.fn() };
-    service = new ProofService(db as never, emitter as never, {} as never);
+    service = new ProofService(
+      db as never,
+      emitter as never,
+      {} as never,
+      { sendDeliveryCode: jest.fn() } as never,
+    );
   });
 
   describe('create', () => {
