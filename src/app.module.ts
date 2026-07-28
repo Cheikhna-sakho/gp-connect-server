@@ -14,7 +14,6 @@ import { AddressesModule } from './addresses/addresses.module';
 import { MissionsModule } from './missions/missions.module';
 import { MessagesModule } from './messages/messages.module';
 import { ConversationsModule } from './conversations/conversations.module';
-import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { MediasModule } from './medias/medias.module';
 import { OffersModule } from './offers/offers.module';
 import { AppointmentsModule } from './appointments/appointments.module';
@@ -52,7 +51,6 @@ import { AdminPanelModule } from './admin/admin-panel.module';
     MissionsModule,
     MessagesModule,
     ConversationsModule,
-    CloudinaryModule,
     MediasModule,
     OffersModule,
     AppointmentsModule,

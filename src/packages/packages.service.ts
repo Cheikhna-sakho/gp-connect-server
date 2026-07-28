@@ -81,7 +81,7 @@ export class PackagesService {
         },
       });
     } catch (e) {
-      // Rollback Cloudinary uploads if DB create fails
+      // Rollback des uploads (stockage) si la création DB échoue
       await Promise.allSettled(
         medias.map((m) => this.mediasService.delete({ id: m.id })),
       );
@@ -113,7 +113,7 @@ export class PackagesService {
       );
     }
 
-    // Delete Cloudinary files + Media DB records
+    // Supprime les fichiers du stockage + les Media en DB
     // PackageMedia join records cascade when Media is deleted (onDelete: Cascade)
     await Promise.allSettled(
       pkg.images.map(({ media }) =>

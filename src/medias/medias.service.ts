@@ -1,22 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { MediaType, Prisma } from '@prisma/client';
-import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 import { DatabaseService } from 'src/database/database.service';
-
-type CloudinaryResourceType = 'image' | 'video' | 'raw';
-
-const CLOUDINARY_RESOURCE_TYPE: Record<MediaType, CloudinaryResourceType> = {
-  IMAGE: 'image',
-  AUDIO: 'video',
-  VIDEO: 'video',
-};
+import { FILE_STORAGE, StoragePort } from './storage.port';
 
 @Injectable()
 export class MediasService {
   private medias: DatabaseService['media'];
   constructor(
     private readonly databaseService: DatabaseService,
-    private readonly cloudinaryService: CloudinaryService,
+    @Inject(FILE_STORAGE) private readonly storage: StoragePort,
   ) {
     this.medias = this.databaseService.media;
   }
@@ -29,16 +21,20 @@ export class MediasService {
     });
   }
 
-  async createImage(file: Express.Multer.File) {
-    const uploaded = await this.cloudinaryService.uploadFile(file, 'image');
+  private async create(file: Express.Multer.File, type: MediaType) {
+    const uploaded = await this.storage.upload(file, type);
     return this.medias.create({
       data: {
-        url: uploaded.secure_url,
-        publicId: uploaded.public_id,
-        type: MediaType.IMAGE,
+        url: uploaded.url,
+        publicId: uploaded.storageId,
+        type,
         metadata: this.extractFileMetadata(file),
       },
     });
+  }
+
+  async createImage(file: Express.Multer.File) {
+    return this.create(file, MediaType.IMAGE);
   }
 
   async createManyImages(files: Express.Multer.File[]) {
@@ -46,27 +42,11 @@ export class MediasService {
   }
 
   async createAudio(file: Express.Multer.File) {
-    const uploaded = await this.cloudinaryService.uploadFile(file, 'video');
-    return this.medias.create({
-      data: {
-        url: uploaded.secure_url,
-        publicId: uploaded.public_id,
-        type: MediaType.AUDIO,
-        metadata: this.extractFileMetadata(file),
-      },
-    });
+    return this.create(file, MediaType.AUDIO);
   }
 
   async createVideo(file: Express.Multer.File) {
-    const uploaded = await this.cloudinaryService.uploadFile(file, 'video');
-    return this.medias.create({
-      data: {
-        url: uploaded.secure_url,
-        publicId: uploaded.public_id,
-        type: MediaType.VIDEO,
-        metadata: this.extractFileMetadata(file),
-      },
-    });
+    return this.create(file, MediaType.VIDEO);
   }
 
   async createManyVideos(files: Express.Multer.File[]) {
@@ -93,10 +73,7 @@ export class MediasService {
       select: { publicId: true, type: true },
     });
     if (media?.publicId) {
-      await this.cloudinaryService.deleteFile(
-        media.publicId,
-        CLOUDINARY_RESOURCE_TYPE[media.type],
-      );
+      await this.storage.delete(media.publicId, media.type);
     }
     return this.medias.delete({ where });
   }
