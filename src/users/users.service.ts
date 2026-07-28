@@ -114,32 +114,12 @@ export class UsersService {
   async updateById(id: string, data: UpdateUserDto) {
     data.password &&= await this.hashPassword(data.password as string);
 
-    // Email : double confirmation. L'adresse active (= identifiant de login)
-    // ne bascule JAMAIS ici — le nouvel email part en `pendingEmail` et un
-    // lien de confirmation est envoyé À LA NOUVELLE adresse ; la bascule a
-    // lieu dans verifyEmailToken. Une faute de frappe ne peut donc pas
-    // couper l'accès au compte, et le badge « vérifié » reste honnête.
-    // Téléphone : bascule immédiate mais vérification invalidée (OTP SMS à
-    // refaire) — même logique KYC qu'avant.
     const { email, ...rest } = data;
-    const resets: Prisma.UserUpdateInput = {};
-    let pendingEmail: string | undefined;
-    if (email !== undefined || rest.phone !== undefined) {
-      const current = await this.users.findUnique({
-        where: { id },
-        select: { email: true, phone: true },
-      });
-      if (email !== undefined && email !== current?.email) {
-        const taken = await this.findByEmail(email);
-        if (taken && taken.id !== id) {
-          throw new ConflictException('Email already in use');
-        }
-        pendingEmail = email;
-      }
-      if (rest.phone !== undefined && rest.phone !== current?.phone) {
-        resets.phoneVerifiedAt = null;
-      }
-    }
+    const { pendingEmail, resets } = await this.prepareContactChanges(
+      id,
+      email,
+      rest.phone,
+    );
 
     let updated;
     try {
@@ -168,6 +148,41 @@ export class UsersService {
     }
 
     return updated;
+  }
+
+  /**
+   * Email : double confirmation. L'adresse active (= identifiant de login)
+   * ne bascule JAMAIS ici — le nouvel email part en `pendingEmail` et un
+   * lien de confirmation est envoyé À LA NOUVELLE adresse ; la bascule a
+   * lieu dans verifyEmailToken. Une faute de frappe ne peut donc pas
+   * couper l'accès au compte, et le badge « vérifié » reste honnête.
+   * Téléphone : bascule immédiate mais vérification invalidée (OTP SMS à
+   * refaire) — même logique KYC qu'avant.
+   */
+  private async prepareContactChanges(
+    id: string,
+    email: string | undefined,
+    phone: string | undefined,
+  ) {
+    const resets: Prisma.UserUpdateInput = {};
+    let pendingEmail: string | undefined;
+    if (email !== undefined || phone !== undefined) {
+      const current = await this.users.findUnique({
+        where: { id },
+        select: { email: true, phone: true },
+      });
+      if (email !== undefined && email !== current?.email) {
+        const taken = await this.findByEmail(email);
+        if (taken && taken.id !== id) {
+          throw new ConflictException('Email already in use');
+        }
+        pendingEmail = email;
+      }
+      if (phone !== undefined && phone !== current?.phone) {
+        resets.phoneVerifiedAt = null;
+      }
+    }
+    return { pendingEmail, resets };
   }
   async delete(where: Delete) {
     // `return` obligatoire : sans lui la suppression partait sans être

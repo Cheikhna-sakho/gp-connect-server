@@ -270,20 +270,57 @@ export class ConversationsService {
       );
     }
 
-    // On ne rattache que des colis appartenant au shipper de la mission :
-    // sinon on pourrait lier les colis d'autrui à sa propre mission.
-    if (packageIds?.length) {
-      const owned = await this.databaseService.package.count({
-        where: { id: { in: packageIds }, ownerId: data.shipperId },
-      });
-      if (owned !== packageIds.length) {
-        throw new ForbiddenException(
-          'Some packages do not belong to the shipper',
-        );
-      }
-    }
+    await this.assertPackagesOwnedBy(packageIds, data.shipperId);
 
-    const missionRelation = data.missionId
+    try {
+      return await this.conversations.create({
+        data: {
+          advertisement: { connect: { id: data.advertisementId } },
+          mission: this.buildMissionRelation(data, packageIds),
+          shipper: { connect: { id: data.shipperId } },
+          carrier: { connect: { id: data.carrierId } },
+        },
+      });
+    } catch (e) {
+      // Conflit d'unicité (advertisement, shipper, carrier) : une conversation
+      // existe déjà pour ce trio (double POST / race). On renvoie l'existante
+      // au lieu d'un 500, l'opération est idempotente.
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002'
+      ) {
+        const existing = await this.findExistingForTrio(data);
+        if (existing) return existing;
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * On ne rattache que des colis appartenant au shipper de la mission :
+   * sinon on pourrait lier les colis d'autrui à sa propre mission.
+   */
+  private async assertPackagesOwnedBy(
+    packageIds: string[] | undefined,
+    shipperId: string,
+  ) {
+    if (!packageIds?.length) return;
+    const owned = await this.databaseService.package.count({
+      where: { id: { in: packageIds }, ownerId: shipperId },
+    });
+    if (owned !== packageIds.length) {
+      throw new ForbiddenException(
+        'Some packages do not belong to the shipper',
+      );
+    }
+  }
+
+  /** Mission existante → connect ; sinon mission-dossier créée avec les colis. */
+  private buildMissionRelation(
+    data: Omit<CreateConversationDto, 'packageIds'>,
+    packageIds: string[] | undefined,
+  ) {
+    return data.missionId
       ? { connect: { id: data.missionId } }
       : {
           create: {
@@ -300,36 +337,23 @@ export class ConversationsService {
               : {}),
           },
         };
-    try {
-      return await this.conversations.create({
-        data: {
-          advertisement: { connect: { id: data.advertisementId } },
-          mission: missionRelation,
-          shipper: { connect: { id: data.shipperId } },
-          carrier: { connect: { id: data.carrierId } },
+  }
+
+  private findExistingForTrio(
+    data: Pick<
+      CreateConversationDto,
+      'advertisementId' | 'shipperId' | 'carrierId'
+    >,
+  ) {
+    return this.conversations.findUnique({
+      where: {
+        advertisementId_shipperId_carrierId: {
+          advertisementId: data.advertisementId,
+          shipperId: data.shipperId,
+          carrierId: data.carrierId,
         },
-      });
-    } catch (e) {
-      // Conflit d'unicité (advertisement, shipper, carrier) : une conversation
-      // existe déjà pour ce trio (double POST / race). On renvoie l'existante
-      // au lieu d'un 500, l'opération est idempotente.
-      if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === 'P2002'
-      ) {
-        const existing = await this.conversations.findUnique({
-          where: {
-            advertisementId_shipperId_carrierId: {
-              advertisementId: data.advertisementId,
-              shipperId: data.shipperId,
-              carrierId: data.carrierId,
-            },
-          },
-        });
-        if (existing) return existing;
-      }
-      throw e;
-    }
+      },
+    });
   }
 
   update({

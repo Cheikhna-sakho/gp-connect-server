@@ -264,6 +264,26 @@ export class AuthService {
     firstName?: string,
     lastName?: string,
   ) {
+    const claims = await this.verifyAppleIdentityToken(identityToken);
+
+    // Apple transmet email_verified en booléen OU en chaîne "true".
+    const emailVerified =
+      claims.email_verified === true || claims.email_verified === 'true';
+
+    const user = await this.validateOAuthLogin(
+      { providerUserId: claims.sub, email: claims.email, firstName, lastName },
+      AuthProvider.APPLE,
+      emailVerified,
+    );
+    return { user, ...(await this.signTokenPair(user.id)) };
+  }
+
+  /**
+   * Vérifie intégralement l'identity token Apple et retourne ses claims :
+   * config fail-closed, format JWT, algo épinglé, issuer, expiration,
+   * audience, puis signature via les JWKS Apple.
+   */
+  private async verifyAppleIdentityToken(identityToken: string) {
     // Fail-closed : sans audience configurée, on refuse — sinon la vérification
     // d'audience serait sautée et un token Apple émis pour une AUTRE app serait
     // accepté (confused deputy → prise de compte).
@@ -295,8 +315,13 @@ export class AuthService {
       throw new UnauthorizedException('Apple token audience mismatch');
     }
 
+    await this.verifyAppleSignature(parts, header.kid);
+    return claims;
+  }
+
+  private async verifyAppleSignature(parts: string[], kid: string) {
     const keys = await this.getAppleJwks();
-    const jwk = keys.find((k) => k.kid === header.kid);
+    const jwk = keys.find((k) => k.kid === kid);
     if (!jwk) throw new UnauthorizedException('Apple signing key not found');
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -306,17 +331,6 @@ export class AuthService {
     const valid = verifier.verify(publicKey, parts[2], 'base64url');
     if (!valid)
       throw new UnauthorizedException('Invalid Apple token signature');
-
-    // Apple transmet email_verified en booléen OU en chaîne "true".
-    const emailVerified =
-      claims.email_verified === true || claims.email_verified === 'true';
-
-    const user = await this.validateOAuthLogin(
-      { providerUserId: claims.sub, email: claims.email, firstName, lastName },
-      AuthProvider.APPLE,
-      emailVerified,
-    );
-    return { user, ...(await this.signTokenPair(user.id)) };
   }
 
   // ─── Facebook — verify accessToken via Graph API ──────────────────────────
@@ -330,8 +344,33 @@ export class AuthService {
       throw new UnauthorizedException('Facebook login is not configured');
     }
 
-    // 1. Vérifier que le token a bien été émis pour NOTRE application (sinon un
-    // token valide d'une autre app Facebook authentifierait — confused deputy).
+    await this.assertFacebookTokenIssuedForApp(accessToken, appId, appSecret);
+    const profile = await this.fetchFacebookProfile(accessToken, appSecret);
+
+    const user = await this.validateOAuthLogin(
+      {
+        providerUserId: profile.id,
+        email: profile.email,
+        firstName: profile.first_name,
+        lastName: profile.last_name,
+      },
+      AuthProvider.FACEBOOK,
+      // Le token est confirmé émis pour notre app ; l'email d'un compte
+      // Facebook est un email vérifié.
+      true,
+    );
+    return { user, ...(await this.signTokenPair(user.id)) };
+  }
+
+  /**
+   * Vérifie que le token a bien été émis pour NOTRE application (sinon un
+   * token valide d'une autre app Facebook authentifierait — confused deputy).
+   */
+  private async assertFacebookTokenIssuedForApp(
+    accessToken: string,
+    appId: string,
+    appSecret: string,
+  ) {
     const debugUrl = `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(
       accessToken,
     )}&access_token=${appId}|${appSecret}`;
@@ -345,9 +384,13 @@ export class AuthService {
         'Facebook token was not issued for this app',
       );
     }
+  }
 
-    // 2. Récupérer le profil, protégé par appsecret_proof (empêche l'usage d'un
-    // token volé sans le secret de l'app).
+  /**
+   * Récupère le profil, protégé par appsecret_proof (empêche l'usage d'un
+   * token volé sans le secret de l'app).
+   */
+  private async fetchFacebookProfile(accessToken: string, appSecret: string) {
     const proof = createHmac('sha256', appSecret)
       .update(accessToken)
       .digest('hex');
@@ -371,19 +414,6 @@ export class AuthService {
       throw new UnauthorizedException(
         data.error?.message ?? 'Facebook auth failed',
       );
-
-    const user = await this.validateOAuthLogin(
-      {
-        providerUserId: data.id,
-        email: data.email,
-        firstName: data.first_name,
-        lastName: data.last_name,
-      },
-      AuthProvider.FACEBOOK,
-      // Le token est confirmé émis pour notre app ; l'email d'un compte
-      // Facebook est un email vérifié.
-      true,
-    );
-    return { user, ...(await this.signTokenPair(user.id)) };
+    return data as typeof data & { id: string };
   }
 }
