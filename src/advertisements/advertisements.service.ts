@@ -7,6 +7,7 @@ import { AdvertisementStatus, Prisma } from '@prisma/client';
 import { plainToInstance } from 'class-transformer';
 import { DatabaseService } from 'src/database/database.service';
 import { CreateAdvertisementDto } from './dtos/create-advertisements.dto';
+import { AdvertisementQueryFindDto } from './dtos/advertisements-query-find.dto';
 import {
   ADVERTISEMENT_CONVERSATION_INCLUDE,
   ADVERTISEMENT_DEFAULT_INCLUDE,
@@ -120,6 +121,108 @@ export class AdvertisementsService {
         )
     `;
     return rows.map((r) => r.id);
+  }
+
+  /**
+   * Recherche publique : annonces OPEN non expirées, filtres du DTO traduits
+   * en clauses Prisma (prix max, poids min, villes, rayon PostGIS).
+   */
+  async searchPublic(query: AdvertisementQueryFindDto) {
+    const {
+      page,
+      limit,
+      maxWeight,
+      price,
+      arrivalDate,
+      departureCityName,
+      destinationCityName,
+      lat,
+      lng,
+      radius,
+      sortBy,
+      order,
+      ...where
+    } = query;
+
+    // Exclure les annonces expirées (date d'arrivée passée). Si le client
+    // fournit aussi un filtre arrivalDate, on garde la borne la plus restrictive.
+    const now = new Date();
+    const arrivalFloor =
+      arrivalDate && new Date(arrivalDate) > now ? arrivalDate : now;
+
+    const prismaWhere: Record<string, any> = {
+      ...where,
+      status: 'OPEN' as const,
+      // "Prix max" → annonces dont le prix est ≤ à la valeur saisie
+      ...(price ? { price: { lte: price } } : {}),
+      // "Poids min dispo" → annonces dont la capacité est ≥ à la valeur saisie
+      ...(maxWeight ? { maxWeight: { gte: maxWeight } } : {}),
+      // Annonces dont la date d'arrivée est >= max(maintenant, date saisie)
+      arrivalDate: { gte: arrivalFloor },
+      ...this.cityFilter('departure', departureCityName),
+      ...this.cityFilter('destination', destinationCityName),
+    };
+
+    // Filtre géospatial PostGIS : restreindre aux annonces dont la ville de
+    // départ est dans le rayon défini (défaut 100 km)
+    if (lat !== undefined && lng !== undefined) {
+      prismaWhere.id = {
+        in: await this.findNearbyIds(lat, lng, radius ?? 100),
+      };
+    }
+
+    return this.findAll(
+      prismaWhere,
+      { page, limit },
+      this.buildOrderBy(sortBy, order, { createdAt: 'desc' }),
+    );
+  }
+
+  /** Annonces de l'auteur (offres incluses), authorId imposé par le token. */
+  async searchMine(authorId: string, query: AdvertisementQueryFindDto) {
+    const {
+      page,
+      limit,
+      arrivalDate,
+      departureCityName,
+      destinationCityName,
+      sortBy,
+      order,
+      ...where
+    } = query;
+
+    const prismaWhere = {
+      ...where,
+      authorId, // après le spread : non surchargeable par un ?authorId= en query
+      ...(arrivalDate ? { arrivalDate: { gte: arrivalDate } } : {}),
+      ...this.cityFilter('departure', departureCityName),
+      ...this.cityFilter('destination', destinationCityName),
+    };
+
+    return this.findAll(
+      prismaWhere,
+      { page, limit },
+      this.buildOrderBy(sortBy, order, { arrivalDate: 'asc' }),
+      true,
+    );
+  }
+
+  /** Filtre « le nom de ville contient » (insensible à la casse). */
+  private cityFilter(field: 'departure' | 'destination', name?: string) {
+    if (!name) return {};
+    return {
+      [field]: {
+        city: { name: { contains: name, mode: 'insensitive' as const } },
+      },
+    };
+  }
+
+  private buildOrderBy(
+    sortBy: AdvertisementQueryFindDto['sortBy'],
+    order: AdvertisementQueryFindDto['order'],
+    fallback: Prisma.AdvertisementOrderByWithRelationInput,
+  ): Prisma.AdvertisementOrderByWithRelationInput {
+    return sortBy ? { [sortBy]: order ?? 'asc' } : fallback;
   }
 
   // Offres PENDING d'une annonce, réservées à l'auteur (ACL dans le contrôleur).

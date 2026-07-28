@@ -46,84 +46,8 @@ export class AdvertisementsController {
   @Public()
   @Get()
   @SerializePage(AdvertisementEntity)
-  async getAll(
-    @Query()
-    {
-      page,
-      limit,
-      maxWeight,
-      price,
-      arrivalDate,
-      departureCityName,
-      destinationCityName,
-      lat,
-      lng,
-      radius,
-      sortBy,
-      order,
-      ...where
-    }: AdvertisementQueryFindDto,
-  ) {
-    // Exclure les annonces expirées (date d'arrivée passée). Si le client
-    // fournit aussi un filtre arrivalDate, on garde la borne la plus restrictive.
-    const now = new Date();
-    const arrivalFloor =
-      arrivalDate && new Date(arrivalDate) > now ? arrivalDate : now;
-
-    const prismaWhere: Record<string, any> = {
-      ...where,
-      status: 'OPEN' as const,
-      // "Prix max" → annonces dont le prix est ≤ à la valeur saisie
-      ...(price ? { price: { lte: price } } : {}),
-      // "Poids min dispo" → annonces dont la capacité est ≥ à la valeur saisie
-      ...(maxWeight ? { maxWeight: { gte: maxWeight } } : {}),
-      // Annonces dont la date d'arrivée est >= max(maintenant, date saisie)
-      arrivalDate: { gte: arrivalFloor },
-      ...(departureCityName
-        ? {
-            departure: {
-              city: {
-                name: {
-                  contains: departureCityName,
-                  mode: 'insensitive' as const,
-                },
-              },
-            },
-          }
-        : {}),
-      ...(destinationCityName
-        ? {
-            destination: {
-              city: {
-                name: {
-                  contains: destinationCityName,
-                  mode: 'insensitive' as const,
-                },
-              },
-            },
-          }
-        : {}),
-    };
-
-    // Filtre géospatial PostGIS : restreindre aux annonces dont la ville de départ
-    // est dans le rayon défini (défaut 100 km)
-    if (lat !== undefined && lng !== undefined) {
-      const nearbyIds = await this.advertisementsService.findNearbyIds(
-        lat,
-        lng,
-        radius ?? 100,
-      );
-      prismaWhere.id = { in: nearbyIds };
-    }
-
-    const orderBy = sortBy
-      ? { [sortBy]: order ?? 'asc' }
-      : { createdAt: 'desc' as const };
-    return this.advertisementsService.findAll(
-      prismaWhere,
-      { page, limit },
-      orderBy,
-    );
+  getAll(@Query() query: AdvertisementQueryFindDto) {
+    return this.advertisementsService.searchPublic(query);
   }
 
   @Public()
@@ -156,56 +80,9 @@ export class AdvertisementsController {
   @SerializePage(AdvertisementEntity)
   getMine(
     @GetUserId() authorId: string,
-    @Query()
-    {
-      page,
-      limit,
-      arrivalDate,
-      departureCityName,
-      destinationCityName,
-      sortBy,
-      order,
-      ...where
-    }: AdvertisementQueryFindDto,
+    @Query() query: AdvertisementQueryFindDto,
   ) {
-    const prismaWhere = {
-      ...where,
-      authorId, // après le spread : non surchargeable par un ?authorId= en query
-      ...(arrivalDate ? { arrivalDate: { gte: arrivalDate } } : {}),
-      ...(departureCityName
-        ? {
-            departure: {
-              city: {
-                name: {
-                  contains: departureCityName,
-                  mode: 'insensitive' as const,
-                },
-              },
-            },
-          }
-        : {}),
-      ...(destinationCityName
-        ? {
-            destination: {
-              city: {
-                name: {
-                  contains: destinationCityName,
-                  mode: 'insensitive' as const,
-                },
-              },
-            },
-          }
-        : {}),
-    };
-    const orderBy = sortBy
-      ? { [sortBy]: order ?? 'asc' }
-      : { arrivalDate: 'asc' as const };
-    return this.advertisementsService.findAll(
-      prismaWhere,
-      { page, limit },
-      orderBy,
-      true,
-    );
+    return this.advertisementsService.searchMine(authorId, query);
   }
 
   @ApiAuth()
@@ -214,26 +91,11 @@ export class AdvertisementsController {
   @Roles('CARRIER')
   @Post('delivery')
   @Serialize(AdvertisementEntity)
-  async createDelivery(
+  createDelivery(
     @GetUserId() authorId: string,
     @Body() data: CreateAdvertisementWithAddressDto,
   ) {
-    data.authorId = authorId;
-    data.type = 'DELIVERY';
-    const { departure, destination, ...dto } = data;
-    const { id: destinationId } = await this.addressService.createIfNotExist(
-      { ...destination },
-      { id: true },
-    );
-    const { id: departureId } = await this.addressService.createIfNotExist(
-      { ...departure },
-      { id: true },
-    );
-    return this.advertisementsService.create({
-      ...dto,
-      destinationId,
-      departureId,
-    });
+    return this.createWithAddresses(authorId, 'DELIVERY', data);
   }
 
   @ApiAuth()
@@ -242,12 +104,21 @@ export class AdvertisementsController {
   @Roles('SHIPPER')
   @Post('shipping')
   @Serialize(AdvertisementEntity)
-  async createShipping(
+  createShipping(
     @GetUserId() authorId: string,
     @Body() data: CreateAdvertisementWithAddressDto,
   ) {
+    return this.createWithAddresses(authorId, 'SHIPPING', data);
+  }
+
+  // authorId et type sont imposés par le token/la route — jamais par le body.
+  private async createWithAddresses(
+    authorId: string,
+    type: 'DELIVERY' | 'SHIPPING',
+    data: CreateAdvertisementWithAddressDto,
+  ) {
     data.authorId = authorId;
-    data.type = 'SHIPPING';
+    data.type = type;
     const { departure, destination, ...dto } = data;
     const { id: destinationId } = await this.addressService.createIfNotExist(
       { ...destination },

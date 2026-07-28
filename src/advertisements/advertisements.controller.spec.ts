@@ -16,7 +16,13 @@ describe('AdvertisementsController', () => {
   let ads: jest.Mocked<
     Pick<
       AdvertisementsService,
-      'findBy' | 'findOffers' | 'create' | 'update' | 'delete' | 'findAll'
+      | 'findBy'
+      | 'findOffers'
+      | 'create'
+      | 'update'
+      | 'delete'
+      | 'searchMine'
+      | 'searchPublic'
     >
   >;
   let addresses: jest.Mocked<Pick<AddressesService, 'createIfNotExist'>>;
@@ -28,7 +34,8 @@ describe('AdvertisementsController', () => {
       create: jest.fn().mockResolvedValue({}),
       update: jest.fn().mockResolvedValue({}),
       delete: jest.fn().mockResolvedValue(undefined),
-      findAll: jest.fn().mockResolvedValue({ data: [], meta: {} }),
+      searchMine: jest.fn().mockResolvedValue({ data: [], meta: {} }),
+      searchPublic: jest.fn().mockResolvedValue({ data: [], meta: {} }),
     } as never;
     addresses = {
       createIfNotExist: jest
@@ -104,12 +111,12 @@ describe('AdvertisementsController', () => {
     });
   });
 
-  describe('getMine — authorId non surchargeable', () => {
-    it('authorId du token écrase un ?authorId= injecté en query', () => {
-      // un attaquant tente de lister les annonces d'autrui via ?authorId=
+  describe('getMine — délégation', () => {
+    it("transmet l'authorId du token au service (la garde vit dans searchMine)", () => {
       controller.getMine(AUTHOR, { authorId: 'victime' } as never);
-      const where = ads.findAll.mock.calls[0][0];
-      expect(where.authorId).toBe(AUTHOR);
+      expect(ads.searchMine).toHaveBeenCalledWith(AUTHOR, {
+        authorId: 'victime',
+      });
     });
   });
 });

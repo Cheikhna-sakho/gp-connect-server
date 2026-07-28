@@ -129,6 +129,34 @@ describe('AdvertisementsService', () => {
     });
   });
 
+  describe('searchMine — authorId non surchargeable', () => {
+    it('authorId du token écrase un ?authorId= injecté en query', async () => {
+      // un attaquant tente de lister les annonces d'autrui via ?authorId=
+      db.advertisement.findMany.mockResolvedValue([]);
+      db.advertisement.count.mockResolvedValue(0);
+
+      await service.searchMine(AUTHOR, { authorId: 'victime' } as never);
+
+      const { where } = db.advertisement.findMany.mock.calls[0][0];
+      expect(where.authorId).toBe(AUTHOR);
+    });
+  });
+
+  describe('searchPublic', () => {
+    it('OPEN + non expirées ; prix max et poids min traduits en lte/gte', async () => {
+      db.advertisement.findMany.mockResolvedValue([]);
+      db.advertisement.count.mockResolvedValue(0);
+
+      await service.searchPublic({ price: 30, maxWeight: 5 } as never);
+
+      const { where } = db.advertisement.findMany.mock.calls[0][0];
+      expect(where.status).toBe('OPEN');
+      expect(where.price).toEqual({ lte: 30 });
+      expect(where.maxWeight).toEqual({ gte: 5 });
+      expect(where.arrivalDate.gte).toBeInstanceOf(Date);
+    });
+  });
+
   describe('findAll', () => {
     it('borne la limite à 50 et renvoie {data, meta}', async () => {
       db.advertisement.findMany.mockResolvedValue([{ id: 'ad1' }]);
