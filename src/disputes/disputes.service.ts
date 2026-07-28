@@ -59,6 +59,31 @@ export class DisputesService {
   // ─── Open a dispute — shipper or carrier ──────────────────────────────────
 
   async create(missionId: string, userId: string, data: CreateDisputeDto) {
+    const mission = await this.loadDisputableMission(missionId, userId);
+    const result = await this.openDisputeTransaction(missionId, userId, data);
+
+    // Effets de bord du passage en DISPUTED (broadcast temps réel notamment) —
+    // mutualisés avec MissionsService.
+    await this.missionsService.applyStatusSideEffects({
+      id: missionId,
+      advertisementId: mission.advertisementId,
+      status: 'DISPUTED',
+    });
+
+    const [dispute] = result;
+    this.notifyDisputeOpened(mission, userId, missionId, data.reason);
+    this.openTrackerTicket(dispute.id, {
+      missionId,
+      reason: data.reason,
+      description: data.description,
+      openedBy: userId === mission.shipperId ? 'shipper' : 'carrier',
+    });
+
+    return result;
+  }
+
+  /** Gardes d'ouverture : mission existante, partie prenante, statut disputable. */
+  private async loadDisputableMission(missionId: string, userId: string) {
     const mission = await this.db.mission.findUnique({
       where: { id: missionId },
       select: {
@@ -78,10 +103,17 @@ export class DisputesService {
         `Cannot open a dispute on a mission with status ${mission.status}`,
       );
     }
+    return mission;
+  }
 
-    let result: [Awaited<ReturnType<typeof this.disputes.create>>, unknown];
+  /** Création du litige + mission DISPUTED, atomique ; P2002 → déjà ouvert. */
+  private async openDisputeTransaction(
+    missionId: string,
+    userId: string,
+    data: CreateDisputeDto,
+  ) {
     try {
-      result = await this.db.$transaction([
+      return await this.db.$transaction([
         this.disputes.create({
           data: {
             missionId,
@@ -103,74 +135,59 @@ export class DisputesService {
       }
       throw e;
     }
+  }
 
-    // Effets de bord du passage en DISPUTED (broadcast temps réel notamment) —
-    // mutualisés avec MissionsService.
-    await this.missionsService.applyStatusSideEffects({
-      id: missionId,
-      advertisementId: mission.advertisementId,
-      status: 'DISPUTED',
-    });
-
-    // L'autre partie n'est pas forcément connectée : email d'information.
+  /** L'autre partie n'est pas forcément connectée : email d'information. */
+  private notifyDisputeOpened(
+    mission: { shipperId: string | null; carrierId: string | null },
+    openerId: string,
+    missionId: string,
+    reason: string,
+  ) {
     const otherPartyId =
-      userId === mission.shipperId ? mission.carrierId : mission.shipperId;
+      openerId === mission.shipperId ? mission.carrierId : mission.shipperId;
     void this.emailUser(otherPartyId, (email, firstName) =>
       this.emailService.sendDisputeOpened(email, {
         firstName,
         missionId,
-        reason: data.reason,
+        reason,
       }),
     );
+  }
 
-    // Suivi équipe : un ticket par litige chez le tracker (le toast « notre
-    // équipe a été notifiée » devient vrai). Jamais bloquant pour l'ouverture.
-    // L'id du ticket est persisté pour pouvoir le fermer à la résolution.
-    const [dispute] = result;
+  /**
+   * Suivi équipe : un ticket par litige chez le tracker (le toast « notre
+   * équipe a été notifiée » devient vrai). Jamais bloquant pour l'ouverture.
+   * L'id du ticket est persisté pour pouvoir le fermer à la résolution.
+   */
+  private openTrackerTicket(
+    disputeId: string,
+    data: {
+      missionId: string;
+      reason: string;
+      description?: string | null;
+      openedBy: 'shipper' | 'carrier';
+    },
+  ) {
     void this.tracker
-      .openTicket({
-        disputeId: dispute.id,
-        missionId,
-        reason: data.reason,
-        description: data.description,
-        openedBy: userId === mission.shipperId ? 'shipper' : 'carrier',
-      })
+      .openTicket({ disputeId, ...data })
       .then((ticketId) =>
         ticketId == null
           ? undefined
           : this.disputes.update({
-              where: { id: dispute.id },
+              where: { id: disputeId },
               // Colonne Int héritée de GitHub — à migrer en texte si un
               // provider à ids non numériques arrive.
               data: { githubIssueNumber: Number(ticketId) },
             }),
       )
       .catch((err) => this.logger.warn(`Ticket litige non créé: ${err}`));
-
-    return result;
   }
 
   // ─── Admin: resolve a dispute ─────────────────────────────────────────────
 
   async resolve(id: string, adminId: string, data: ResolveDisputeDto) {
-    const dispute = await this.disputes.findUnique({
-      where: { id },
-      include: {
-        mission: {
-          select: {
-            advertisementId: true,
-            status: true,
-            shipperId: true,
-            carrierId: true,
-          },
-        },
-      },
-    });
-
-    if (!dispute) throw new NotFoundException('Dispute not found');
-    if (dispute.status === 'RESOLVED') {
-      throw new BadRequestException('This dispute is already resolved');
-    }
+    const dispute = await this.loadResolvableDispute(id);
 
     // Verrou optimiste : le WHERE porte le statut OPEN — si deux résolutions
     // concourent, une seule écrit (count=1), l'autre reçoit le 400 au lieu
@@ -204,7 +221,43 @@ export class DisputesService {
       status: data.missionOutcome,
     });
 
-    // Les deux parties sont informées de l'issue du litige par email.
+    this.notifyDisputeResolved(dispute, data);
+    this.closeTrackerTicket(dispute.githubIssueNumber, data);
+
+    return updatedDispute;
+  }
+
+  /** Gardes de résolution : litige existant et pas déjà résolu. */
+  private async loadResolvableDispute(id: string) {
+    const dispute = await this.disputes.findUnique({
+      where: { id },
+      include: {
+        mission: {
+          select: {
+            advertisementId: true,
+            status: true,
+            shipperId: true,
+            carrierId: true,
+          },
+        },
+      },
+    });
+
+    if (!dispute) throw new NotFoundException('Dispute not found');
+    if (dispute.status === 'RESOLVED') {
+      throw new BadRequestException('This dispute is already resolved');
+    }
+    return dispute;
+  }
+
+  /** Les deux parties sont informées de l'issue du litige par email. */
+  private notifyDisputeResolved(
+    dispute: {
+      missionId: string;
+      mission: { shipperId: string | null; carrierId: string | null };
+    },
+    data: ResolveDisputeDto,
+  ) {
     for (const partyId of [
       dispute.mission.shipperId,
       dispute.mission.carrierId,
@@ -218,20 +271,24 @@ export class DisputesService {
         }),
       );
     }
+  }
 
-    // Boucle de suivi complète : le ticket ouvert à la création est commenté
-    // (texte de résolution) puis fermé. Jamais bloquant.
-    if (dispute.githubIssueNumber != null) {
-      void this.tracker
-        .closeTicket({
-          ticketId: String(dispute.githubIssueNumber),
-          resolution: data.resolution,
-          missionOutcome: data.missionOutcome,
-        })
-        .catch((err) => this.logger.warn(`Ticket litige non fermé: ${err}`));
-    }
-
-    return updatedDispute;
+  /**
+   * Boucle de suivi complète : le ticket ouvert à la création est commenté
+   * (texte de résolution) puis fermé. Jamais bloquant.
+   */
+  private closeTrackerTicket(
+    ticketNumber: number | null,
+    data: ResolveDisputeDto,
+  ) {
+    if (ticketNumber == null) return;
+    void this.tracker
+      .closeTicket({
+        ticketId: String(ticketNumber),
+        resolution: data.resolution,
+        missionOutcome: data.missionOutcome,
+      })
+      .catch((err) => this.logger.warn(`Ticket litige non fermé: ${err}`));
   }
 
   // ─── User: own dispute for a mission ─────────────────────────────────────
