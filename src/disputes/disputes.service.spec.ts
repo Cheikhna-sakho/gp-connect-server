@@ -49,9 +49,9 @@ const p2002 = () => Object.assign(new Error('unique'), { code: 'P2002' });
 describe('DisputesService', () => {
   let db: ReturnType<typeof makeDb>;
   let missionsService: { applyStatusSideEffects: jest.Mock };
-  let githubIssues: {
-    createDisputeIssue: jest.Mock;
-    closeDisputeIssue: jest.Mock;
+  let tracker: {
+    openTicket: jest.Mock;
+    closeTicket: jest.Mock;
   };
   let service: DisputesService;
 
@@ -60,9 +60,9 @@ describe('DisputesService', () => {
     missionsService = {
       applyStatusSideEffects: jest.fn().mockResolvedValue(undefined),
     };
-    githubIssues = {
-      createDisputeIssue: jest.fn().mockResolvedValue(null),
-      closeDisputeIssue: jest.fn().mockResolvedValue(undefined),
+    tracker = {
+      openTicket: jest.fn().mockResolvedValue(null),
+      closeTicket: jest.fn().mockResolvedValue(undefined),
     };
     const email = {
       sendDisputeOpened: jest.fn(),
@@ -71,7 +71,7 @@ describe('DisputesService', () => {
     service = new DisputesService(
       db as never,
       missionsService as never,
-      githubIssues as never,
+      tracker as never,
       email as never,
     );
   });
@@ -155,14 +155,14 @@ describe('DisputesService', () => {
       expect(result).toEqual([{ id: 'd1' }, {}]);
     });
 
-    it("persiste le numéro d'issue GitHub quand la création en renvoie un", async () => {
+    it('persiste le numéro de ticket quand la création en renvoie un', async () => {
       db.mission.findUnique.mockResolvedValue({
         status: 'ACCEPTED',
         shipperId: 'u1',
         carrierId: 'carrier',
         advertisementId: 'ad1',
       });
-      githubIssues.createDisputeIssue.mockResolvedValue(42);
+      tracker.openTicket.mockResolvedValue('42');
 
       await service.create('m1', 'u1', data);
       // La persistance est dans une chaîne void (jamais bloquante) : on
@@ -175,7 +175,7 @@ describe('DisputesService', () => {
       });
     });
 
-    it("pas d'écriture si l'issue n'a pas été créée (env gaté → null)", async () => {
+    it("pas d'écriture si le ticket n'a pas été créé (adapter noop → null)", async () => {
       db.mission.findUnique.mockResolvedValue({
         status: 'ACCEPTED',
         shipperId: 'u1',
@@ -242,11 +242,11 @@ describe('DisputesService', () => {
         status: 'CANCELLED',
       });
       expect(updated).toEqual({ id: 'd1' });
-      // Pas de numéro d'issue stocké → pas de tentative de fermeture.
-      expect(githubIssues.closeDisputeIssue).not.toHaveBeenCalled();
+      // Pas de numéro de ticket stocké → pas de tentative de fermeture.
+      expect(tracker.closeTicket).not.toHaveBeenCalled();
     });
 
-    it("ferme l'issue GitHub de suivi quand le litige en porte une", async () => {
+    it('ferme le ticket de suivi quand le litige en porte un', async () => {
       db.missionDispute.findUnique.mockResolvedValue({
         id: 'd1',
         status: 'OPEN',
@@ -258,8 +258,8 @@ describe('DisputesService', () => {
       await service.resolve('d1', 'admin', data);
       await new Promise(process.nextTick);
 
-      expect(githubIssues.closeDisputeIssue).toHaveBeenCalledWith({
-        issueNumber: 42,
+      expect(tracker.closeTicket).toHaveBeenCalledWith({
+        ticketId: '42',
         resolution: 'refund',
         missionOutcome: 'CANCELLED',
       });

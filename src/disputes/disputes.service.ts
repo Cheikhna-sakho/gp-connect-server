@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
@@ -10,7 +11,7 @@ import { DatabaseService } from 'src/database/database.service';
 import { MissionsService } from 'src/missions/missions.service';
 import { CreateDisputeDto } from './dtos/create-dispute.dto';
 import { ResolveDisputeDto } from './dtos/resolve-dispute.dto';
-import { GithubIssuesService } from './github-issues.service';
+import { DISPUTE_TRACKER, DisputeTrackerPort } from './dispute-tracker.port';
 import { EmailService } from 'src/email/email.service';
 
 @Injectable()
@@ -21,7 +22,7 @@ export class DisputesService {
   constructor(
     private readonly db: DatabaseService,
     private readonly missionsService: MissionsService,
-    private readonly githubIssues: GithubIssuesService,
+    @Inject(DISPUTE_TRACKER) private readonly tracker: DisputeTrackerPort,
     private readonly emailService: EmailService,
   ) {
     this.disputes = this.db.missionDispute;
@@ -122,27 +123,29 @@ export class DisputesService {
       }),
     );
 
-    // Suivi équipe : une issue GitHub par litige (le toast « notre équipe a
-    // été notifiée » devient vrai). Jamais bloquant pour l'ouverture. Le
-    // numéro d'issue est persisté pour pouvoir la fermer à la résolution.
+    // Suivi équipe : un ticket par litige chez le tracker (le toast « notre
+    // équipe a été notifiée » devient vrai). Jamais bloquant pour l'ouverture.
+    // L'id du ticket est persisté pour pouvoir le fermer à la résolution.
     const [dispute] = result;
-    void this.githubIssues
-      .createDisputeIssue({
+    void this.tracker
+      .openTicket({
         disputeId: dispute.id,
         missionId,
         reason: data.reason,
         description: data.description,
         openedBy: userId === mission.shipperId ? 'shipper' : 'carrier',
       })
-      .then((issueNumber) =>
-        issueNumber == null
+      .then((ticketId) =>
+        ticketId == null
           ? undefined
           : this.disputes.update({
               where: { id: dispute.id },
-              data: { githubIssueNumber: issueNumber },
+              // Colonne Int héritée de GitHub — à migrer en texte si un
+              // provider à ids non numériques arrive.
+              data: { githubIssueNumber: Number(ticketId) },
             }),
       )
-      .catch((err) => this.logger.warn(`Issue litige non créée: ${err}`));
+      .catch((err) => this.logger.warn(`Ticket litige non créé: ${err}`));
 
     return result;
   }
@@ -216,16 +219,16 @@ export class DisputesService {
       );
     }
 
-    // Boucle de suivi complète : l'issue GitHub ouverte à la création est
-    // commentée (texte de résolution) puis fermée. Jamais bloquant.
+    // Boucle de suivi complète : le ticket ouvert à la création est commenté
+    // (texte de résolution) puis fermé. Jamais bloquant.
     if (dispute.githubIssueNumber != null) {
-      void this.githubIssues
-        .closeDisputeIssue({
-          issueNumber: dispute.githubIssueNumber,
+      void this.tracker
+        .closeTicket({
+          ticketId: String(dispute.githubIssueNumber),
           resolution: data.resolution,
           missionOutcome: data.missionOutcome,
         })
-        .catch((err) => this.logger.warn(`Issue litige non fermée: ${err}`));
+        .catch((err) => this.logger.warn(`Ticket litige non fermé: ${err}`));
     }
 
     return updatedDispute;
