@@ -5,11 +5,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { ProofType } from '@prisma/client';
+import { Prisma, ProofType } from '@prisma/client';
 import { DatabaseService } from 'src/database/database.service';
 import { generateOtp, verifyOtp } from 'src/common/utils/otp.util';
 import { ProofDto } from './dtos/proof.dto';
 import { MediasService } from 'src/medias/medias.service';
+
+type ProofEvent = { name: string; payload: unknown };
 
 @Injectable()
 export class ProofService {
@@ -92,6 +94,72 @@ export class ProofService {
     code: string;
     verifiedById: string;
   }) {
+    const proof = await this.loadVerifiableProof({
+      missionId,
+      type,
+      verifiedById,
+    });
+    await this.checkOtpOrCountAttempt(proof, code);
+
+    // Les événements sont émis APRÈS le commit : émettre dans la transaction
+    // annoncerait « preuve vérifiée » à des clients alors qu'un rollback peut
+    // encore tout annuler.
+    const events: ProofEvent[] = [];
+
+    const verified = await this.databaseService.$transaction(async (tx) => {
+      // Verrou optimiste : deux soumissions concurrentes du même code valide
+      // ne peuvent pas transiter la mission deux fois — seule la première
+      // écriture matche (otpUsedAt encore null).
+      const { count } = await tx.missionProof.updateMany({
+        where: { id: proof.id, otpUsedAt: null },
+        data: { otpUsedAt: new Date(), verifiedById },
+      });
+      if (count === 0) {
+        throw new BadRequestException('This code has already been used');
+      }
+
+      const missionPackages = await tx.missionPackage.findMany({
+        where: { missionId },
+        select: { packageId: true },
+      });
+      const packageIds = missionPackages.map((mp) => mp.packageId);
+
+      if (type === 'PICKUP') {
+        await this.applyPickupTransition(tx, missionId, packageIds);
+      }
+      if (type === 'DELIVERY') {
+        await this.applyDeliveryTransition(tx, missionId, packageIds);
+      }
+
+      const updatedProof = await tx.missionProof.findUnique({
+        where: { id: proof.id },
+      });
+
+      events.push(...(await this.collectPostCommitEvents(tx, missionId, type)));
+
+      return updatedProof;
+    });
+
+    for (const e of events) {
+      this.eventEmitter.emit(e.name, e.payload);
+    }
+    return verified;
+  }
+
+  /**
+   * Charge la preuve et applique les gardes OTP : existence, code généré,
+   * déjà utilisé, expiration, verrouillage au premier vérificateur, plafond
+   * d'essais anti brute-force.
+   */
+  private async loadVerifiableProof({
+    missionId,
+    type,
+    verifiedById,
+  }: {
+    missionId: string;
+    type: ProofType;
+    verifiedById: string;
+  }) {
     const proof = await this.proofs.findUnique({
       where: { missionId_type: { missionId, type } },
     });
@@ -122,7 +190,14 @@ export class ProofService {
         'Too many attempts — ask the shipper to generate a new code',
       );
     }
+    return { ...proof, otpHash: proof.otpHash };
+  }
 
+  /** Vérifie le code ; un échec incrémente le compteur anti brute-force. */
+  private async checkOtpOrCountAttempt(
+    proof: { id: string; otpHash: string },
+    code: string,
+  ) {
     const isValid = await verifyOtp({ hash: proof.otpHash, plain: code });
     if (!isValid) {
       await this.proofs.update({
@@ -131,110 +206,98 @@ export class ProofService {
       });
       throw new BadRequestException('Invalid code');
     }
+  }
 
-    // Les événements sont émis APRÈS le commit : émettre dans la transaction
-    // annoncerait « preuve vérifiée » à des clients alors qu'un rollback peut
-    // encore tout annuler.
-    const events: { name: string; payload: unknown }[] = [];
+  /** PICKUP : les colis passent PICKED_UP, la mission entre IN_TRANSIT. */
+  private async applyPickupTransition(
+    tx: Prisma.TransactionClient,
+    missionId: string,
+    packageIds: string[],
+  ) {
+    await tx.package.updateMany({
+      where: { id: { in: packageIds } },
+      data: { status: 'PICKED_UP' },
+    });
+    // Mission enters IN_TRANSIT — carrier has the packages
+    await tx.mission.update({
+      where: { id: missionId },
+      data: { status: 'IN_TRANSIT' },
+    });
+  }
 
-    const verified = await this.databaseService.$transaction(async (tx) => {
-      // Verrou optimiste : deux soumissions concurrentes du même code valide
-      // ne peuvent pas transiter la mission deux fois — seule la première
-      // écriture matche (otpUsedAt encore null).
-      const { count } = await tx.missionProof.updateMany({
-        where: { id: proof.id, otpUsedAt: null },
-        data: { otpUsedAt: new Date(), verifiedById },
-      });
-      if (count === 0) {
-        throw new BadRequestException('This code has already been used');
-      }
-
-      const missionPackages = await tx.missionPackage.findMany({
-        where: { missionId },
-        select: { packageId: true },
-      });
-      const packageIds = missionPackages.map((mp) => mp.packageId);
-
-      if (type === 'PICKUP') {
-        await tx.package.updateMany({
-          where: { id: { in: packageIds } },
-          data: { status: 'PICKED_UP' },
-        });
-        // Mission enters IN_TRANSIT — carrier has the packages
-        await tx.mission.update({
-          where: { id: missionId },
-          data: { status: 'IN_TRANSIT' },
-        });
-      }
-
-      if (type === 'DELIVERY') {
-        const mission = await tx.mission.findUnique({
-          where: { id: missionId },
-          select: { advertisementId: true, shipperId: true, carrierId: true },
-        });
-
-        await tx.package.updateMany({
-          where: { id: { in: packageIds } },
-          data: { status: 'DELIVERED' },
-        });
-        await tx.mission.update({
-          where: { id: missionId },
-          data: { status: 'COMPLETED' },
-        });
-        await tx.advertisement.update({
-          where: { id: mission.advertisementId },
-          data: { status: 'COMPLETED' },
-        });
-        // Mark transaction as completed — delivery confirmed
-        await tx.transaction.updateMany({
-          where: { missionId, status: 'PENDING' },
-          data: { status: 'COMPLETED' },
-        });
-      }
-
-      const updatedProof = await tx.missionProof.findUnique({
-        where: { id: proof.id },
-      });
-
-      // Broadcast proof verification event to all linked conversation rooms
-      const conversations = await tx.conversation.findMany({
-        where: { missionId },
-        select: { id: true },
-      });
-      events.push({
-        name: 'proof.verified',
-        payload: {
-          missionId,
-          type,
-          conversationIds: conversations.map((c) => c.id),
-        },
-      });
-
-      // When delivery is confirmed, both carrier and shipper stats change
-      if (type === 'DELIVERY') {
-        const completedMission = await tx.mission.findUnique({
-          where: { id: missionId },
-          select: { shipperId: true, carrierId: true },
-        });
-        if (completedMission) {
-          events.push({
-            name: 'stats.updated',
-            payload: {
-              userIds: [
-                completedMission.shipperId,
-                completedMission.carrierId,
-              ].filter(Boolean),
-            },
-          });
-        }
-      }
-
-      return updatedProof;
+  /** DELIVERY : colis livrés, mission et annonce COMPLETED, transaction soldée. */
+  private async applyDeliveryTransition(
+    tx: Prisma.TransactionClient,
+    missionId: string,
+    packageIds: string[],
+  ) {
+    const mission = await tx.mission.findUnique({
+      where: { id: missionId },
+      select: { advertisementId: true, shipperId: true, carrierId: true },
     });
 
-    for (const e of events) {
-      this.eventEmitter.emit(e.name, e.payload);
+    await tx.package.updateMany({
+      where: { id: { in: packageIds } },
+      data: { status: 'DELIVERED' },
+    });
+    await tx.mission.update({
+      where: { id: missionId },
+      data: { status: 'COMPLETED' },
+    });
+    await tx.advertisement.update({
+      where: { id: mission.advertisementId },
+      data: { status: 'COMPLETED' },
+    });
+    // Mark transaction as completed — delivery confirmed
+    await tx.transaction.updateMany({
+      where: { missionId, status: 'PENDING' },
+      data: { status: 'COMPLETED' },
+    });
+  }
+
+  /**
+   * Événements à émettre après commit : broadcast de la preuve vers les
+   * conversations liées, et rafraîchissement des stats des deux parties
+   * quand la livraison est confirmée.
+   */
+  private async collectPostCommitEvents(
+    tx: Prisma.TransactionClient,
+    missionId: string,
+    type: ProofType,
+  ): Promise<ProofEvent[]> {
+    const events: ProofEvent[] = [];
+
+    const conversations = await tx.conversation.findMany({
+      where: { missionId },
+      select: { id: true },
+    });
+    events.push({
+      name: 'proof.verified',
+      payload: {
+        missionId,
+        type,
+        conversationIds: conversations.map((c) => c.id),
+      },
+    });
+
+    if (type === 'DELIVERY') {
+      const completedMission = await tx.mission.findUnique({
+        where: { id: missionId },
+        select: { shipperId: true, carrierId: true },
+      });
+      if (completedMission) {
+        events.push({
+          name: 'stats.updated',
+          payload: {
+            userIds: [
+              completedMission.shipperId,
+              completedMission.carrierId,
+            ].filter(Boolean),
+          },
+        });
+      }
     }
-    return verified;
+
+    return events;
   }
 }
