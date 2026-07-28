@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from 'src/users/users.service';
+import { UserVerificationService } from 'src/users/user-verification.service';
 import { JwtPayload } from './types/jwt.type';
 import { jwtConstants } from './constants';
 import * as bcrypt from 'bcrypt';
@@ -29,6 +30,7 @@ export class AuthService {
 
   constructor(
     private readonly usersService: UsersService,
+    private readonly verificationService: UserVerificationService,
     private readonly jwtService: JwtService,
     private readonly databaseService: DatabaseService,
     private readonly config: ConfigService,
@@ -79,9 +81,9 @@ export class AuthService {
     const user = await this.usersService.findByIdentifier(identifier);
     if (!user) throw new UnauthorizedException('Invalid credentials');
     if (sendOptTo === VerificationTokenType.PHONE) {
-      return this.usersService.sendPhoneVerification(user.id);
+      return this.verificationService.sendPhoneVerification(user.id);
     }
-    return this.usersService.sendEmailOpt(user.id);
+    return this.verificationService.sendEmailOpt(user.id);
   }
 
   async loginOpt({
@@ -97,7 +99,7 @@ export class AuthService {
     if (!user) throw new UnauthorizedException('Invalid credentials');
     // L'OTP est vérifié par userId + canal : l'identifiant fourni peut être
     // l'email même quand le code est reçu par SMS (cas de l'inscription).
-    await this.usersService.verifyOtpToken(user.id, code, type);
+    await this.verificationService.verifyOtpToken(user.id, code, type);
     if (!user.phoneVerifiedAt && type === VerificationTokenType.PHONE) {
       this.usersService.updateById(user.id, { phoneVerifiedAt: new Date() });
     }
@@ -112,9 +114,9 @@ export class AuthService {
     // Vérif SMS seulement si un téléphone est renseigné (désactivé à
     // l'inscription tant que TWILIO_FROM n'est pas configuré).
     if (user.phone) {
-      await this.usersService.sendPhoneVerification(user.id);
+      await this.verificationService.sendPhoneVerification(user.id);
     }
-    await this.usersService.sendEmailVerification(user.id);
+    await this.verificationService.sendEmailVerification(user.id);
     return user;
   }
 
@@ -127,7 +129,7 @@ export class AuthService {
   }
 
   async verifyEmail(token: string) {
-    return this.usersService.verifyEmailToken(token);
+    return this.verificationService.verifyEmailToken(token);
   }
 
   // ─── Generic OAuth handler (shared by all providers) ──────────────────────

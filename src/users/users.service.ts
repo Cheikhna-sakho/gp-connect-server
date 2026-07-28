@@ -1,22 +1,17 @@
 import {
-  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
   NotFoundException,
-  UnauthorizedException,
 } from '@nestjs/common';
-import { Prisma, VerificationTokenType } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { DatabaseService } from 'src/database/database.service';
 import * as bcrypt from 'bcrypt';
 import { MediasService } from 'src/medias/medias.service';
 import { UUID } from 'crypto';
 import { USER_DEFAULT_INCLUDE } from './entities/user.entity';
 import { UpdateUserDto } from './dtos/update-user.dto';
-import { EmailService } from 'src/email/email.service';
-import { generateEmailToken, getHashFromToken } from './generateEmailToken';
-import { PhoneService } from 'src/phone/phone.service';
-import { generateOtp } from 'src/common/utils/otp.util';
+import { UserVerificationService } from './user-verification.service';
 
 type Find = { where: Prisma.UserWhereInput };
 type FindOne = { where: Prisma.UserWhereInput };
@@ -28,25 +23,20 @@ type Update = {
 };
 
 type Delete = { where: Prisma.UserWhereUniqueInput };
-const MINUTE_IN_MS = 1000 * 60;
-const HOUR_IN_MS = MINUTE_IN_MS * 60;
 
 @Injectable()
 export class UsersService {
   private users: DatabaseService['user'];
   private avatar: DatabaseService['userAvatar'];
-  private verificationToken: DatabaseService['verificationToken'];
   private readonly logger = new Logger(UsersService.name);
 
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly mediasService: MediasService,
-    private readonly mailService: EmailService,
-    private readonly phoneService: PhoneService,
+    private readonly verification: UserVerificationService,
   ) {
     this.users = this.databaseService.user;
     this.avatar = this.databaseService.userAvatar;
-    this.verificationToken = this.databaseService.verificationToken;
   }
   async hashPassword(password: string) {
     return bcrypt.hash(password, 10);
@@ -142,9 +132,11 @@ export class UsersService {
     // Envoi du lien de confirmation à la nouvelle adresse — jamais bloquant
     // pour le PATCH (l'utilisateur peut re-demander via « renvoyer »).
     if (pendingEmail) {
-      void this.sendEmailVerification(id).catch((err) =>
-        this.logger.warn(`Email de confirmation non envoyé: ${err}`),
-      );
+      void this.verification
+        .sendEmailVerification(id)
+        .catch((err) =>
+          this.logger.warn(`Email de confirmation non envoyé: ${err}`),
+        );
     }
 
     return updated;
@@ -289,136 +281,5 @@ export class UsersService {
     await this.databaseService.savedAddress.deleteMany({
       where: { userId, addressId },
     });
-  }
-  async getOptPayload(userId: string, type: VerificationTokenType) {
-    const user = await this.users.findUnique({
-      where: { id: userId },
-      select: { tokens: true, email: true, phone: true },
-    });
-    const { hash: tokenHash, plain: token, expiresAt } = await generateOtp();
-    await this.verificationToken.deleteMany({
-      where: { userId: userId, type },
-    });
-    await this.verificationToken.create({
-      data: { userId, type, tokenHash, expiresAt },
-    });
-    return { ...user, token };
-  }
-  async sendEmailVerification(userId: string) {
-    const user = await this.users.findUnique({ where: { id: userId } });
-    // Un changement en attente prime : le lien part à la NOUVELLE adresse
-    // (c'est elle qu'il faut prouver), même si l'actuelle est déjà vérifiée.
-    if (!user) return;
-    if (!user.pendingEmail && user.emailVerifiedAt) return;
-    const { hash, token } = generateEmailToken();
-    await this.verificationToken.create({
-      data: {
-        userId,
-        type: VerificationTokenType.EMAIL,
-        tokenHash: hash,
-        expiresAt: new Date(Date.now() + HOUR_IN_MS),
-      },
-    });
-    return this.mailService.sendEmailVerification(
-      user.pendingEmail ?? user.email,
-      token,
-    );
-  }
-
-  async verifyEmailToken(token: string) {
-    if (!token) throw new BadRequestException('Invalid token');
-    const tokenHash = getHashFromToken(token);
-    const now = new Date();
-    const record = await this.verificationToken.findFirst({
-      where: { tokenHash, type: VerificationTokenType.EMAIL },
-      select: {
-        userId: true,
-        id: true,
-        expiresAt: true,
-        user: { select: { emailVerifiedAt: true, pendingEmail: true } },
-      },
-    });
-
-    if (!record) throw new BadRequestException('Invalid token');
-    const pending = record.user?.pendingEmail;
-    // Lien rejoué sans changement en attente : idempotent.
-    if (!pending && record.user?.emailVerifiedAt) return true;
-    if (record.expiresAt < now) throw new BadRequestException('Token expired');
-    try {
-      await this.databaseService.$transaction([
-        this.users.update({
-          where: { id: record.userId },
-          // Changement d'email en attente : la bascule a lieu ICI, une fois
-          // le contrôle de la nouvelle adresse prouvé par le clic — et elle
-          // est vérifiée par construction.
-          data: pending
-            ? {
-                email: pending,
-                pendingEmail: null,
-                emailVerifiedAt: new Date(),
-              }
-            : { emailVerifiedAt: new Date() },
-        }),
-        this.verificationToken.delete({ where: { id: record.id } }),
-      ]);
-    } catch (e) {
-      // Course : l'adresse a été prise par un autre compte entre la demande
-      // et le clic (pendingEmail n'est pas unique — c'est ici que ça se joue).
-      if ((e as { code?: string })?.code === 'P2002') {
-        throw new BadRequestException(
-          'This email address is no longer available',
-        );
-      }
-      throw e;
-    }
-
-    return true;
-  }
-
-  async verifyOtpToken(
-    userId: string,
-    token: string,
-    type: VerificationTokenType,
-  ) {
-    const now = new Date();
-    const record = await this.verificationToken.findFirst({
-      where: {
-        userId,
-        type,
-        usedAt: null,
-        expiresAt: { gt: now },
-      },
-      select: {
-        userId: true,
-        tokenHash: true,
-      },
-    });
-    if (!record) throw new UnauthorizedException('Token expired.');
-    const verified = await bcrypt.compare(token, record.tokenHash);
-    if (!verified) throw new UnauthorizedException('Token invalid');
-    await this.verificationToken.deleteMany({
-      where: { userId: record.userId, type },
-    });
-    return verified;
-  }
-
-  async sendPhoneVerification(userId: string) {
-    const { phone, token } = await this.getOptPayload(
-      userId,
-      VerificationTokenType.PHONE,
-    );
-    // Compte inscrit sans téléphone : un OTP « par SMS » est impossible →
-    // 400 explicite plutôt qu'un 500 Twilio (« params['to'] missing »).
-    if (!phone) {
-      throw new BadRequestException('No phone number on this account');
-    }
-    return this.phoneService.sendPhoneVerification(phone, token);
-  }
-  async sendEmailOpt(userId: string) {
-    const { email, token } = await this.getOptPayload(
-      userId,
-      VerificationTokenType.EMAIL,
-    );
-    return this.mailService.sendEmailOpt(email, token);
   }
 }

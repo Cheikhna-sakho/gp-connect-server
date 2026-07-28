@@ -3,6 +3,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { UUID } from 'crypto';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
+import { UserVerificationService } from './user-verification.service';
 
 // Test unitaire du contrôleur : UsersService est mocké. On vérifie la logique
 // propre au contrôleur (gardes, délégation), pas la couche HTTP/guards (→ e2e).
@@ -19,7 +20,16 @@ describe('UsersController', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [UsersController],
-      providers: [{ provide: UsersService, useValue: service }],
+      providers: [
+        { provide: UsersService, useValue: service },
+        {
+          provide: UserVerificationService,
+          useValue: {
+            verifyEmailToken: jest.fn(),
+            sendEmailVerification: jest.fn(),
+          },
+        },
+      ],
     }).compile();
 
     controller = module.get<UsersController>(UsersController);

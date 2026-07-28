@@ -8,13 +8,16 @@ import { AuthService } from './auth.service';
 
 const makeUsers = () => ({
   findByIdentifier: jest.fn(),
+  updateById: jest.fn().mockResolvedValue(undefined),
+  create: jest.fn(),
+  findOne: jest.fn(),
+});
+
+const makeVerification = () => ({
   sendEmailOpt: jest.fn().mockResolvedValue(undefined),
   sendPhoneVerification: jest.fn().mockResolvedValue(undefined),
   sendEmailVerification: jest.fn().mockResolvedValue(undefined),
   verifyOtpToken: jest.fn().mockResolvedValue(undefined),
-  updateById: jest.fn().mockResolvedValue(undefined),
-  create: jest.fn(),
-  findOne: jest.fn(),
 });
 
 const makeDb = () => ({
@@ -23,6 +26,7 @@ const makeDb = () => ({
 
 describe('AuthService', () => {
   let users: ReturnType<typeof makeUsers>;
+  let verification: ReturnType<typeof makeVerification>;
   let db: ReturnType<typeof makeDb>;
   let jwt: { sign: jest.Mock };
   let config: { get: jest.Mock };
@@ -30,11 +34,13 @@ describe('AuthService', () => {
 
   beforeEach(() => {
     users = makeUsers();
+    verification = makeVerification();
     db = makeDb();
     jwt = { sign: jest.fn().mockReturnValue('signed.jwt') };
     config = { get: jest.fn().mockReturnValue('EXP') };
     service = new AuthService(
       users as never,
+      verification as never,
       jwt as never,
       db as never,
       config as never,
@@ -52,8 +58,8 @@ describe('AuthService', () => {
     it("canal EMAIL (défaut) → envoie l'OTP email", async () => {
       users.findByIdentifier.mockResolvedValue({ id: 'u1' });
       await service.login({ identifier: 'a@x.com' } as never);
-      expect(users.sendEmailOpt).toHaveBeenCalledWith('u1');
-      expect(users.sendPhoneVerification).not.toHaveBeenCalled();
+      expect(verification.sendEmailOpt).toHaveBeenCalledWith('u1');
+      expect(verification.sendPhoneVerification).not.toHaveBeenCalled();
     });
 
     it("canal PHONE → envoie l'OTP SMS", async () => {
@@ -62,7 +68,7 @@ describe('AuthService', () => {
         identifier: '+221770000000',
         sendOptTo: VerificationTokenType.PHONE,
       } as never);
-      expect(users.sendPhoneVerification).toHaveBeenCalledWith('u1');
+      expect(verification.sendPhoneVerification).toHaveBeenCalledWith('u1');
     });
   });
 
@@ -91,7 +97,7 @@ describe('AuthService', () => {
         type: 'EMAIL',
       } as never);
 
-      expect(users.verifyOtpToken).toHaveBeenCalledWith(
+      expect(verification.verifyOtpToken).toHaveBeenCalledWith(
         'u1',
         '123456',
         'EMAIL',
@@ -126,8 +132,8 @@ describe('AuthService', () => {
       users.create.mockResolvedValue({ id: 'u1', phone: null });
       await service.register({ email: 'a@x.com' } as never);
 
-      expect(users.sendEmailVerification).toHaveBeenCalledWith('u1');
-      expect(users.sendPhoneVerification).not.toHaveBeenCalled();
+      expect(verification.sendEmailVerification).toHaveBeenCalledWith('u1');
+      expect(verification.sendPhoneVerification).not.toHaveBeenCalled();
     });
 
     it('envoie aussi la vérif SMS si un téléphone est renseigné', async () => {
@@ -136,7 +142,7 @@ describe('AuthService', () => {
         email: 'a@x.com',
         phone: '+221770000000',
       } as never);
-      expect(users.sendPhoneVerification).toHaveBeenCalledWith('u1');
+      expect(verification.sendPhoneVerification).toHaveBeenCalledWith('u1');
     });
   });
 

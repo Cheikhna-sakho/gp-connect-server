@@ -23,6 +23,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
+import { UserVerificationService } from './user-verification.service';
 import { UUID } from 'crypto';
 import { RolesGuard } from 'src/auth/guards/role.guard';
 import { Roles } from 'src/auth/decorators/role.decorator';
@@ -64,7 +65,10 @@ const AVATAR_UPLOAD_OPTIONS = {
 @ApiAuth()
 @Controller('users')
 export class UsersController {
-  constructor(readonly usersService: UsersService) {}
+  constructor(
+    readonly usersService: UsersService,
+    readonly verificationService: UserVerificationService,
+  ) {}
 
   // ─── Profile ──────────────────────────────────────────────────────────────
 
@@ -99,13 +103,13 @@ export class UsersController {
   @Post('verify/email')
   @HttpCode(HttpStatus.NO_CONTENT)
   verifyEmail(@Query('token') token: string) {
-    return this.usersService.verifyEmailToken(token);
+    return this.verificationService.verifyEmailToken(token);
   }
 
   @Post('verify/email/resend')
   @HttpCode(HttpStatus.NO_CONTENT)
   resendVerification(@GetUserId() id: UUID) {
-    return this.usersService.sendEmailVerification(id);
+    return this.verificationService.sendEmailVerification(id);
   }
 
   // Mise à jour de SON propre compte : DTO restreint (pas de role=ADMIN,
