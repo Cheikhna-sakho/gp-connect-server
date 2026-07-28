@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Prisma } from '@prisma/client';
 import { DatabaseService } from 'src/database/database.service';
 import { EmailService } from 'src/email/email.service';
 import { UpdateOfferStatusDto } from './dto/update-offer-status.dto';
@@ -60,6 +61,54 @@ export class OffersService {
   // ─── Acceptance — full business logic in one transaction ──────────────────
 
   private async accept(offerId: string, userId: string) {
+    const offer = await this.loadPendingOffer(offerId);
+    const { conversation } = offer.message;
+    const { shipperId, carrierId, missionId } = conversation;
+
+    if (userId !== shipperId && userId !== carrierId)
+      throw new ForbiddenException();
+    if (offer.message.authorId === userId) {
+      throw new ForbiddenException('Cannot accept your own offer');
+    }
+    if (!missionId) {
+      throw new BadRequestException('No mission linked to this conversation');
+    }
+
+    await this.assertCarrierKycVerified(carrierId, userId);
+
+    const result = await this.databaseService.$transaction((tx) =>
+      this.applyAcceptance(tx, {
+        offerId,
+        price: offer.price,
+        carrierId,
+        missionId,
+        conversationId: conversation.id,
+      }),
+    );
+
+    this.eventEmitter.emit('offer.updated', {
+      offer: result,
+      conversationId: conversation.id,
+    });
+    // Broadcast mission transition so frontend knows without a refetch
+    this.eventEmitter.emit('mission.status-changed', {
+      missionId,
+      status: 'ACCEPTED',
+      conversationIds: [conversation.id],
+    });
+
+    // Notification hors-app : l'auteur de l'offre n'est pas forcément connecté
+    // au moment de l'acceptation. Jamais bloquant pour la transaction.
+    void this.notifyOfferAccepted(
+      offer.message.authorId,
+      Number(offer.price),
+      missionId,
+    );
+
+    return result;
+  }
+
+  private async loadPendingOffer(offerId: string) {
     const offer = await this.offers.findUnique({
       where: { id: offerId },
       include: {
@@ -84,22 +133,13 @@ export class OffersService {
     if (offer.status !== 'PENDING') {
       throw new BadRequestException('This offer is no longer pending');
     }
+    return offer;
+  }
 
-    const { conversation } = offer.message;
-    const { shipperId, carrierId, missionId } = conversation;
-
-    if (userId !== shipperId && userId !== carrierId)
-      throw new ForbiddenException();
-    if (offer.message.authorId === userId) {
-      throw new ForbiddenException('Cannot accept your own offer');
-    }
-    if (!missionId) {
-      throw new BadRequestException('No mission linked to this conversation');
-    }
-
-    // Gating KYC : un transporteur doit avoir vérifié son identité avant de
-    // se voir confier des colis. C'est ici (et seulement ici) que la
-    // vérification d'identité devient bloquante — pas à l'inscription.
+  // Gating KYC : un transporteur doit avoir vérifié son identité avant de
+  // se voir confier des colis. C'est ici (et seulement ici) que la
+  // vérification d'identité devient bloquante — pas à l'inscription.
+  private async assertCarrierKycVerified(carrierId: string, userId: string) {
     const carrier = await this.databaseService.user.findUnique({
       where: { id: carrierId },
       select: { idCardVerifiedAt: true },
@@ -111,115 +151,140 @@ export class OffersService {
           : "Ce transporteur n'a pas encore vérifié son identité — la mission ne peut pas démarrer.",
       );
     }
+  }
 
-    const result = await this.databaseService.$transaction(async (tx) => {
-      const mission = await tx.mission.findUnique({
-        where: { id: missionId },
-        select: { status: true, advertisementId: true },
-      });
+  /** Cascade d'acceptation — exécutée sous transaction, verrou optimiste en tête. */
+  private async applyAcceptance(
+    tx: Prisma.TransactionClient,
+    {
+      offerId,
+      price,
+      carrierId,
+      missionId,
+      conversationId,
+    }: {
+      offerId: string;
+      price: Prisma.Decimal;
+      carrierId: string;
+      missionId: string;
+      conversationId: string;
+    },
+  ) {
+    const mission = await tx.mission.findUnique({
+      where: { id: missionId },
+      select: { status: true, advertisementId: true },
+    });
 
-      if (!mission) throw new NotFoundException('Mission not found');
-      if (mission.status !== 'PENDING') {
-        throw new BadRequestException(
-          'This conversation already has an accepted offer',
-        );
-      }
+    if (!mission) throw new NotFoundException('Mission not found');
+    if (mission.status !== 'PENDING') {
+      throw new BadRequestException(
+        'This conversation already has an accepted offer',
+      );
+    }
 
-      // Verrou optimiste : le WHERE porte le statut — deux acceptations
-      // concurrentes (deux offres PENDING) ne peuvent pas écrire toutes deux.
-      const { count } = await tx.mission.updateMany({
-        where: { id: missionId, status: 'PENDING' },
-        data: { carrierId, negotiatedPrice: offer.price, status: 'ACCEPTED' },
-      });
-      if (count === 0) {
-        throw new BadRequestException(
-          'This conversation already has an accepted offer',
-        );
-      }
+    // Verrou optimiste : le WHERE porte le statut — deux acceptations
+    // concurrentes (deux offres PENDING) ne peuvent pas écrire toutes deux.
+    const { count } = await tx.mission.updateMany({
+      where: { id: missionId, status: 'PENDING' },
+      data: { carrierId, negotiatedPrice: price, status: 'ACCEPTED' },
+    });
+    if (count === 0) {
+      throw new BadRequestException(
+        'This conversation already has an accepted offer',
+      );
+    }
 
-      await tx.advertisement.update({
-        where: { id: mission.advertisementId },
-        data: { status: 'IN_PROGRESS' },
-      });
+    await tx.advertisement.update({
+      where: { id: mission.advertisementId },
+      data: { status: 'IN_PROGRESS' },
+    });
 
-      await tx.messageOffer.update({
-        where: { id: offerId },
-        data: { status: 'ACCEPTED', missionId },
-      });
+    await this.settleConversationOffers(tx, {
+      offerId,
+      missionId,
+      conversationId,
+    });
 
-      await tx.messageOffer.updateMany({
-        where: {
-          id: { not: offerId },
-          status: 'PENDING',
-          message: { conversationId: conversation.id },
-        },
-        data: { status: 'REJECTED' },
-      });
+    await tx.transaction.create({
+      data: {
+        missionId,
+        amount: price,
+        method: 'CASH',
+        status: 'PENDING',
+      },
+    });
 
-      await tx.transaction.create({
-        data: {
-          missionId,
-          amount: offer.price,
-          method: 'CASH',
-          status: 'PENDING',
-        },
-      });
+    await this.closeCompetingMissions(tx, {
+      advertisementId: mission.advertisementId,
+      missionId,
+      conversationId,
+    });
 
-      // Cancel other PENDING missions for this advertisement (one accepted = others closed)
-      await tx.mission.updateMany({
-        where: {
-          advertisementId: mission.advertisementId,
-          id: { not: missionId },
-          status: 'PENDING',
-        },
-        data: { status: 'CANCELLED' },
-      });
-      // Archive their conversations (all other active conversations for this ad)
-      await tx.conversation.updateMany({
-        where: {
-          advertisementId: mission.advertisementId,
-          id: { not: conversation.id },
-          status: 'ACTIVE',
-        },
-        data: { status: 'ARCHIVED' },
-      });
-
-      return tx.messageOffer.findUnique({
-        where: { id: offerId },
-        include: {
-          mission: {
-            select: {
-              id: true,
-              status: true,
-              carrierId: true,
-              shipperId: true,
-              negotiatedPrice: true,
-            },
+    return tx.messageOffer.findUnique({
+      where: { id: offerId },
+      include: {
+        mission: {
+          select: {
+            id: true,
+            status: true,
+            carrierId: true,
+            shipperId: true,
+            negotiatedPrice: true,
           },
         },
-      });
+      },
     });
+  }
 
-    this.eventEmitter.emit('offer.updated', {
-      offer: result,
-      conversationId: conversation.id,
-    });
-    // Broadcast mission transition so frontend knows without a refetch
-    this.eventEmitter.emit('mission.status-changed', {
+  /** L'offre choisie passe ACCEPTED ; les autres PENDING de la conversation sont rejetées. */
+  private async settleConversationOffers(
+    tx: Prisma.TransactionClient,
+    {
+      offerId,
       missionId,
-      status: 'ACCEPTED',
-      conversationIds: [conversation.id],
+      conversationId,
+    }: { offerId: string; missionId: string; conversationId: string },
+  ) {
+    await tx.messageOffer.update({
+      where: { id: offerId },
+      data: { status: 'ACCEPTED', missionId },
     });
+    await tx.messageOffer.updateMany({
+      where: {
+        id: { not: offerId },
+        status: 'PENDING',
+        message: { conversationId },
+      },
+      data: { status: 'REJECTED' },
+    });
+  }
 
-    // Notification hors-app : l'auteur de l'offre n'est pas forcément connecté
-    // au moment de l'acceptation. Jamais bloquant pour la transaction.
-    void this.notifyOfferAccepted(
-      offer.message.authorId,
-      Number(offer.price),
+  /** Une offre acceptée ferme le reste de l'annonce : missions PENDING
+      concurrentes annulées, leurs conversations actives archivées. */
+  private async closeCompetingMissions(
+    tx: Prisma.TransactionClient,
+    {
+      advertisementId,
       missionId,
-    );
-
-    return result;
+      conversationId,
+    }: { advertisementId: string; missionId: string; conversationId: string },
+  ) {
+    await tx.mission.updateMany({
+      where: {
+        advertisementId,
+        id: { not: missionId },
+        status: 'PENDING',
+      },
+      data: { status: 'CANCELLED' },
+    });
+    await tx.conversation.updateMany({
+      where: {
+        advertisementId,
+        id: { not: conversationId },
+        status: 'ACTIVE',
+      },
+      data: { status: 'ARCHIVED' },
+    });
   }
 
   private async notifyOfferAccepted(
