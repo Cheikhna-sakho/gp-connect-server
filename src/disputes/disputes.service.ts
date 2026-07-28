@@ -13,6 +13,7 @@ import { CreateDisputeDto } from './dtos/create-dispute.dto';
 import { ResolveDisputeDto } from './dtos/resolve-dispute.dto';
 import { DISPUTE_TRACKER, DisputeTrackerPort } from './dispute-tracker.port';
 import { EmailService } from 'src/email/email.service';
+import { isUniqueViolation } from 'src/common/utils/prisma-errors.util';
 
 @Injectable()
 export class DisputesService {
@@ -128,7 +129,7 @@ export class DisputesService {
         }),
       ]);
     } catch (e) {
-      if (e?.code === 'P2002') {
+      if (isUniqueViolation(e)) {
         throw new ConflictException(
           'A dispute is already open for this mission',
         );

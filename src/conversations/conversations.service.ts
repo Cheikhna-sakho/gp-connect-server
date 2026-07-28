@@ -10,6 +10,7 @@ import { MESSAGE_INCLUDE } from 'src/messages/message-include.const';
 import { USER_DEFAULT_INCLUDE } from 'src/users/entities/user.entity';
 import { CreateConversationDto } from './dtos/create-conversation.dto';
 import { BlocksService } from 'src/blocks/blocks.service';
+import { isUniqueViolation } from 'src/common/utils/prisma-errors.util';
 
 // Une conversation liée à une mission en cours ne peut PAS être hard-deletée :
 // le cascade effacerait l'historique (messages/offres/médias), preuve d'un
@@ -285,10 +286,7 @@ export class ConversationsService {
       // Conflit d'unicité (advertisement, shipper, carrier) : une conversation
       // existe déjà pour ce trio (double POST / race). On renvoie l'existante
       // au lieu d'un 500, l'opération est idempotente.
-      if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === 'P2002'
-      ) {
+      if (isUniqueViolation(e)) {
         const existing = await this.findExistingForTrio(data);
         if (existing) return existing;
       }

@@ -10,6 +10,7 @@ import { EmailService } from 'src/email/email.service';
 import { PhoneService } from 'src/phone/phone.service';
 import { generateEmailToken, getHashFromToken } from './generateEmailToken';
 import { generateOtp } from 'src/common/utils/otp.util';
+import { isUniqueViolation } from 'src/common/utils/prisma-errors.util';
 
 const MINUTE_IN_MS = 1000 * 60;
 const HOUR_IN_MS = MINUTE_IN_MS * 60;
@@ -109,7 +110,7 @@ export class UserVerificationService {
     } catch (e) {
       // Course : l'adresse a été prise par un autre compte entre la demande
       // et le clic (pendingEmail n'est pas unique — c'est ici que ça se joue).
-      if ((e as { code?: string })?.code === 'P2002') {
+      if (isUniqueViolation(e)) {
         throw new BadRequestException(
           'This email address is no longer available',
         );

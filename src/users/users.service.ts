@@ -12,6 +12,7 @@ import { UUID } from 'crypto';
 import { USER_DEFAULT_INCLUDE } from './entities/user.entity';
 import { UpdateUserDto } from './dtos/update-user.dto';
 import { UserVerificationService } from './user-verification.service';
+import { isUniqueViolation } from 'src/common/utils/prisma-errors.util';
 
 type Find = { where: Prisma.UserWhereInput };
 type FindOne = { where: Prisma.UserWhereInput };
@@ -47,7 +48,7 @@ export class UsersService {
       return await this.users.create({ data });
     } catch (e) {
       // Unicité (email/téléphone déjà pris) → 409 propre, pas un 500.
-      if ((e as { code?: string })?.code === 'P2002') {
+      if (isUniqueViolation(e)) {
         throw new ConflictException('Email or phone already in use');
       }
       throw e;
@@ -123,7 +124,7 @@ export class UsersService {
       });
     } catch (e) {
       // Unicité (email/téléphone déjà pris) → 409 propre, pas un 500.
-      if ((e as { code?: string })?.code === 'P2002') {
+      if (isUniqueViolation(e)) {
         throw new ConflictException('Email or phone already in use');
       }
       throw e;

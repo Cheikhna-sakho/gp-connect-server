@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { DatabaseService } from 'src/database/database.service';
 import { USER_DEFAULT_INCLUDE } from 'src/users/entities/user.entity';
+import { isUniqueViolation } from 'src/common/utils/prisma-errors.util';
 
 @Injectable()
 export class BlocksService {
@@ -14,7 +15,7 @@ export class BlocksService {
       return await this.db.userBlock.create({ data: { blockerId, blockedId } });
     } catch (e: any) {
       // Déjà bloqué → idempotent. Cible inexistante (FK) → 400 propre.
-      if (e?.code === 'P2002') {
+      if (isUniqueViolation(e)) {
         return this.db.userBlock.findUnique({
           where: { blockerId_blockedId: { blockerId, blockedId } },
         });

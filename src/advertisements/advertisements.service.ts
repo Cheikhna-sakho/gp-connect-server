@@ -13,6 +13,7 @@ import {
   ADVERTISEMENT_DEFAULT_INCLUDE,
 } from './entities/advertisement.entity';
 import { PublicUserEntity } from 'src/users/entities/public-user.entity';
+import { isRecordNotFound } from 'src/common/utils/prisma-errors.util';
 
 type Find = { where: Prisma.AdvertisementWhereInput };
 type FindOne = {
@@ -310,7 +311,7 @@ export class AdvertisementsService {
     try {
       return await this.advertisements.update({ where, data });
     } catch (e) {
-      if (e?.code === 'P2025')
+      if (isRecordNotFound(e))
         throw new NotFoundException('Advertisement not found');
       throw e;
     }
@@ -328,7 +329,7 @@ export class AdvertisementsService {
     try {
       await this.advertisements.delete(where);
     } catch (e) {
-      if (e?.code === 'P2025')
+      if (isRecordNotFound(e))
         throw new NotFoundException('Advertisement not found');
       throw e;
     }

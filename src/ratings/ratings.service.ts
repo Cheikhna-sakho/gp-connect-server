@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { DatabaseService } from 'src/database/database.service';
 import { CreateRatingDto } from './dtos/create-rating.dto';
+import { isUniqueViolation } from 'src/common/utils/prisma-errors.util';
 
 @Injectable()
 export class RatingsService {
@@ -41,7 +42,7 @@ export class RatingsService {
         data: { missionId, raterId, ratedId, ...data },
       });
     } catch (e) {
-      if (e?.code === 'P2002') {
+      if (isUniqueViolation(e)) {
         throw new ConflictException('You have already rated this mission');
       }
       throw e;

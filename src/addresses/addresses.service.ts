@@ -6,6 +6,7 @@ import { CreateAddressDto } from './dtos/create-address.dto';
 import { CreateCityDto } from './dtos/create-city.dto';
 import { CreateFullAddressDto } from './dtos/create-full-address.dto';
 import { Decimal } from '@prisma/client/runtime/library';
+import { isUniqueViolation } from 'src/common/utils/prisma-errors.util';
 
 @Injectable()
 export class AddressesService {
@@ -134,7 +135,7 @@ export class AddressesService {
       }
       return created as Prisma.AddressGetPayload<{ select: T }>;
     } catch (e) {
-      if (e?.code === 'P2002' && where) {
+      if (isUniqueViolation(e) && where) {
         return this.address.findFirst({ where, select: returning });
       }
       throw e;
