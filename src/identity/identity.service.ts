@@ -1,35 +1,28 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { UserIdentityProvider, UserIdentityStatus } from '@prisma/client';
 import { DatabaseService } from 'src/database/database.service';
-import Stripe from 'stripe';
-
-type IdentityEventType = Extract<
-  Stripe.Event.Type,
-  | 'identity.verification_session.verified'
-  | 'identity.verification_session.requires_input'
-  | 'identity.verification_session.canceled'
->;
-
-const HANDLED_EVENTS = new Set<IdentityEventType>([
-  'identity.verification_session.verified',
-  'identity.verification_session.requires_input',
-  'identity.verification_session.canceled',
-]);
+import {
+  IDENTITY_VERIFIER,
+  IdentityVerifierPort,
+  IdentityWebhookEvent,
+  WebhookNotConfiguredError,
+} from './identity-verifier.port';
 
 @Injectable()
 export class IdentityService {
   private readonly logger = new Logger(IdentityService.name);
-  private stripe: Stripe;
   private userIdentity: DatabaseService['userIdentity'];
 
   constructor(
-    private readonly config: ConfigService,
     private readonly databaseService: DatabaseService,
+    @Inject(IDENTITY_VERIFIER)
+    private readonly verifier: IdentityVerifierPort,
   ) {
-    this.stripe = new Stripe(this.config.get('STRIPE_SECRET_KEY')!, {
-      apiVersion: '2025-11-17.clover',
-    });
     this.userIdentity = this.databaseService.userIdentity;
   }
 
@@ -60,14 +53,7 @@ export class IdentityService {
       throw new BadRequestException('Identity is already verified');
     }
 
-    const session = await this.stripe.identity.verificationSessions.create({
-      type: 'document',
-      metadata: { userId },
-      options: {
-        document: { allowed_types: ['id_card', 'passport', 'driving_license'] },
-      },
-      return_url: this.config.get('STRIPE_IDENTITY_RETURN_URL') || undefined,
-    });
+    const session = await this.verifier.createSession(userId);
 
     await this.upsertStatus({
       status: UserIdentityStatus.PENDING,
@@ -75,50 +61,39 @@ export class IdentityService {
       userId,
     });
 
-    return {
-      id: session.id,
-      url: session.url ?? null,
-      clientSecret: session.client_secret,
-    };
+    return session;
   }
 
-  async handleWebhook(rawBody: Buffer, signature: string | undefined) {
-    const webhookSecret = this.config.get<string>(
-      'STRIPE_WEBHOOK_SECRET_IDENTITY',
-    );
-
-    if (!webhookSecret) {
-      this.logger.error('STRIPE_WEBHOOK_SECRET_IDENTITY is not configured');
-      throw new BadRequestException('Webhook secret not configured');
-    }
-
-    let event: Stripe.Event;
+  async handleWebhook(
+    rawBody: Buffer | undefined,
+    signature: string | undefined,
+  ) {
+    let event: IdentityWebhookEvent;
     try {
-      event = this.stripe.webhooks.constructEvent(
-        rawBody,
-        signature!,
-        webhookSecret,
+      event = this.verifier.parseWebhook(rawBody, signature);
+    } catch (err) {
+      if (err instanceof WebhookNotConfiguredError) {
+        this.logger.error('Identity webhook secret is not configured');
+        throw new BadRequestException('Webhook secret not configured');
+      }
+      this.logger.error(
+        'Webhook signature verification failed',
+        (err as Error).message,
       );
-    } catch (err: any) {
-      this.logger.error('Webhook signature verification failed', err.message);
       throw new BadRequestException('Invalid webhook signature');
     }
 
-    if (!HANDLED_EVENTS.has(event.type as IdentityEventType)) {
-      return { received: true };
-    }
+    if (event.kind === 'ignored') return { received: true };
 
-    const session = event.data.object as Stripe.Identity.VerificationSession;
-    const userId = session.metadata?.userId;
-
+    const { sessionId, userId } = event;
     if (!userId) {
       this.logger.warn(
-        `Verification session ${session.id} has no userId in metadata`,
+        `Verification session ${sessionId} has no userId in metadata`,
       );
       return { received: true };
     }
 
-    if (event.type === 'identity.verification_session.verified') {
+    if (event.kind === 'verified') {
       // Atomique : identité VERIFIED sans idCardVerifiedAt laisserait le
       // gating KYC (OffersService.accept) bloquer un transporteur vérifié.
       // (upsert inliné : une méthode async ne renvoie pas un PrismaPromise
@@ -133,13 +108,13 @@ export class IdentityService {
           },
           update: {
             status: UserIdentityStatus.VERIFIED,
-            providerId: session.id,
+            providerId: sessionId,
           },
           create: {
             userId,
             provider: UserIdentityProvider.STRIPE_IDENTITY,
             status: UserIdentityStatus.VERIFIED,
-            providerId: session.id,
+            providerId: sessionId,
           },
         }),
         this.databaseService.user.update({
@@ -147,19 +122,15 @@ export class IdentityService {
           data: { idCardVerifiedAt: new Date() },
         }),
       ]);
-    } else if (event.type === 'identity.verification_session.requires_input') {
+    } else {
       await this.upsertStatus({
-        status: UserIdentityStatus.REQUIRES_INPUT,
-        providerId: session.id,
+        status:
+          event.kind === 'requires_input'
+            ? UserIdentityStatus.REQUIRES_INPUT
+            : UserIdentityStatus.CANCELED,
+        providerId: sessionId,
         userId,
-        reason: session.last_error?.reason ?? 'requires_input',
-      });
-    } else if (event.type === 'identity.verification_session.canceled') {
-      await this.upsertStatus({
-        status: UserIdentityStatus.CANCELED,
-        providerId: session.id,
-        userId,
-        reason: session.last_error?.reason ?? 'canceled',
+        reason: event.reason,
       });
     }
 
