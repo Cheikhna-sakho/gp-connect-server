@@ -6,7 +6,7 @@ import {
 import { $Enums, Prisma } from '@prisma/client';
 import { UUID } from 'crypto';
 import { DatabaseService } from 'src/database/database.service';
-import { MESSAGE_INCLUDE } from 'src/messages/messages.service';
+import { MESSAGE_INCLUDE } from 'src/messages/message-include.const';
 import { USER_DEFAULT_INCLUDE } from 'src/users/entities/user.entity';
 import { CreateConversationDto } from './dtos/create-conversation.dto';
 import { BlocksService } from 'src/blocks/blocks.service';

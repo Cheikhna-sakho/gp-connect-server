@@ -10,8 +10,7 @@ import { CreateMessageDto } from './dtos/message.dto';
 import { MediasService } from 'src/medias/medias.service';
 import { UpdateOfferDto } from './dtos/message-offer-update.dto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-
-export const MESSAGE_INCLUDE = { offer: true, appointment: true } as const;
+import { MESSAGE_INCLUDE } from './message-include.const';
 
 @Injectable()
 export class MessagesService {
