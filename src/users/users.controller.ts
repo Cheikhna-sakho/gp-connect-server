@@ -35,6 +35,7 @@ import { UserEntity } from './entities/user.entity';
 import { PublicUserEntity } from './entities/public-user.entity';
 import { UserStatsEntity } from './entities/user-stats.entity';
 import { UserPreferencesEntity } from './entities/user-preferences.entity';
+import { Throttle } from '@nestjs/throttler';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { MediaEntity } from 'src/medias/entities/media.entity';
@@ -106,7 +107,11 @@ export class UsersController {
     return this.verificationService.verifyEmailToken(token);
   }
 
+  // Plafonné : sans throttle, poser un pendingEmail tiers puis boucler ce
+  // renvoi permettait un mail-bombing depuis notre domaine + une inflation de
+  // tokens. 3 renvois / 15 min suffisent à l'usage légitime.
   @Post('verify/email/resend')
+  @Throttle({ default: { limit: 3, ttl: 900_000 } })
   @HttpCode(HttpStatus.NO_CONTENT)
   resendVerification(@GetUserId() id: UUID) {
     return this.verificationService.sendEmailVerification(id);

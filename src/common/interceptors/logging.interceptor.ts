@@ -31,13 +31,29 @@ function redact(obj: unknown, depth = 0): unknown {
   );
 }
 
+// Masque la valeur des query params sensibles dans l'URL loggée (le token de
+// vérif email transite en query → sinon il finit en clair dans les logs).
+const SENSITIVE_QUERY = new Set(['token', 'code', 'secret']);
+function redactUrl(url: string): string {
+  const qIndex = url.indexOf('?');
+  if (qIndex === -1) return url;
+  const path = url.slice(0, qIndex);
+  const params = new URLSearchParams(url.slice(qIndex + 1));
+  for (const key of params.keys()) {
+    if (SENSITIVE_QUERY.has(key)) params.set(key, '[REDACTED]');
+  }
+  const qs = params.toString();
+  return qs ? `${path}?${qs}` : path;
+}
+
 @Injectable()
 export class LoggingInterceptor implements NestInterceptor {
   private readonly logger = new Logger('HTTP');
 
   intercept(ctx: ExecutionContext, next: CallHandler): Observable<unknown> {
     const req = ctx.switchToHttp().getRequest();
-    const { method, url, body, ip } = req;
+    const { method, body, ip } = req;
+    const url = redactUrl(req.url);
     const userId: string | undefined = req.user?.sub;
     const handler = `${ctx.getClass().name}.${ctx.getHandler().name}`;
     const start = Date.now();

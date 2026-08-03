@@ -25,12 +25,20 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
  */
 @Injectable()
 export class CsrfGuard implements CanActivate {
-  private readonly allowedOrigin =
-    process.env.FRONTEND_URL ?? 'http://localhost:3000';
+  // Normalisé en origine pure : un FRONTEND_URL avec slash final ou chemin ne
+  // doit pas casser la comparaison `=== req.headers.origin` (jamais suffixé).
+  private readonly allowedOrigin = normalizeOrigin(
+    process.env.FRONTEND_URL ?? 'http://localhost:3000',
+  );
 
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(ctx: ExecutionContext): boolean {
+    // Guard global : ne s'applique qu'au HTTP. En contexte WebSocket/RPC,
+    // `getRequest()` renvoie le Socket (pas de method/headers) → on laisse
+    // passer (le gateway porte sa propre auth + garde CSWSH).
+    if (ctx.getType() !== 'http') return true;
+
     const req = ctx.switchToHttp().getRequest<Request>();
     if (SAFE_METHODS.has(req.method)) return true;
 
@@ -57,8 +65,26 @@ export class CsrfGuard implements CanActivate {
       throw new ForbiddenException('Cross-site request blocked');
     }
     const referer = req.headers.referer;
-    if (referer && referer.startsWith(this.allowedOrigin)) return true;
+    // Comparaison d'ORIGINE parsée, pas de préfixe : `https://app.tld.evil.com`
+    // ne doit pas matcher `https://app.tld`.
+    if (referer && safeOrigin(referer) === this.allowedOrigin) return true;
 
     throw new ForbiddenException('Missing or invalid origin');
+  }
+}
+
+function normalizeOrigin(value: string): string {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return value;
+  }
+}
+
+function safeOrigin(value: string): string | null {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
   }
 }

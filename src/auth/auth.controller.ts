@@ -28,7 +28,7 @@ import { GoogleAuthGuard } from './guards/google.guard';
 import { Request, Response } from 'express';
 import { CreateUserDto } from 'src/users/dtos/create-user.dto';
 import { LoginDto } from './dtos/login.dto';
-import { VerificationTokenType } from '@prisma/client';
+import { OtpDto } from './dtos/otp.dto';
 import {
   AppleTokenDto,
   FacebookTokenDto,
@@ -138,12 +138,7 @@ export class AuthController {
   @Throttle(OTP_THROTTLE)
   async otp(
     @Res({ passthrough: true }) res: Response,
-    @Body()
-    {
-      code,
-      type,
-      identifier,
-    }: { identifier: string; code: string; type: VerificationTokenType },
+    @Body() { code, type, identifier }: OtpDto,
   ) {
     const { user, accessToken, refreshToken } = await this.authService.loginOpt(
       { identifier, code, type },

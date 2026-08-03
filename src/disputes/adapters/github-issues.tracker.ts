@@ -11,6 +11,19 @@ type GithubIssuesConfig = {
   repo: string;
 };
 
+// Encadre du texte utilisateur libre en bloc de code Markdown pour qu'il ne
+// soit jamais interprété (mentions, images distantes, faux statut). La clôture
+// est plus longue que la plus longue suite de backticks du contenu — un
+// contenu contenant ``` ne peut pas casser le bloc.
+function fenceCodeBlock(text: string): string {
+  const longest = (text.match(/`+/g) ?? ['']).reduce(
+    (max, run) => Math.max(max, run.length),
+    0,
+  );
+  const fence = '`'.repeat(Math.max(3, longest + 1));
+  return `${fence}\n${text}\n${fence}`;
+}
+
 /**
  * Tracker de litiges sur GitHub Issues (repo privé).
  *
@@ -31,7 +44,10 @@ export class GithubIssuesTracker implements DisputeTrackerPort {
       `**Raison** : ${data.reason}`,
       '',
       '**Description**',
-      data.description ?? '_(aucune)_',
+      // Encadré en bloc de code : la description est du texte utilisateur
+      // libre — hors bloc, un @mention, une image distante traçante ou un
+      // faux « litige résolu » s'y injecteraient (Markdown interprété).
+      fenceCodeBlock(data.description ?? '(aucune)'),
       '',
       '---',
       '_Résolution via l’API : `PATCH /disputes/:id` (l’issue n’est qu’un canal de suivi)._',
@@ -69,7 +85,7 @@ export class GithubIssuesTracker implements DisputeTrackerPort {
           `**Mission** : ${data.missionOutcome === 'COMPLETED' ? 'terminée' : 'annulée'}`,
           '',
           '**Résolution**',
-          data.resolution,
+          fenceCodeBlock(data.resolution),
         ].join('\n'),
       }),
     });

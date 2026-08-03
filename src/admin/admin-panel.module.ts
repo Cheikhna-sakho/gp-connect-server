@@ -215,17 +215,28 @@ export class AdminPanelModule {
                 });
                 return admin ? { id: admin.id, email: admin.email } : null;
               },
+              // Le panel n'est pas derrière le ThrottlerGuard Nest (routeur
+              // Express monté en middleware) : sans maxRetries, POST /admin/login
+              // était bruteforçable sans limite sur un mot de passe unique.
+              maxRetries: { count: 5, duration: 900 },
               cookieName: 'gp_admin',
+              // `||` (pas `??`) : ADMIN_COOKIE_SECRET livré vide dans .env.example
+              // → `??` ne rattrape pas '' → express-session refuse de démarrer.
               cookiePassword:
-                config.get('ADMIN_COOKIE_SECRET') ??
+                config.get('ADMIN_COOKIE_SECRET') ||
                 config.get('ADMIN_PANEL_PASSWORD'),
             },
             sessionOptions: {
               resave: false,
               saveUninitialized: false,
               secret:
-                config.get('ADMIN_COOKIE_SECRET') ??
+                config.get('ADMIN_COOKIE_SECRET') ||
                 config.get('ADMIN_PANEL_PASSWORD'),
+              cookie: {
+                httpOnly: true,
+                sameSite: 'lax',
+                secure: config.get('NODE_ENV') === 'production',
+              },
             },
           };
         },

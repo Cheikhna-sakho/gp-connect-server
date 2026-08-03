@@ -5,6 +5,7 @@ const ORIGIN = 'https://app.example';
 
 const makeCtx = (req: Record<string, unknown>): ExecutionContext =>
   ({
+    getType: () => 'http',
     switchToHttp: () => ({ getRequest: () => req }),
     getHandler: () => ({}),
     getClass: () => ({}),

@@ -10,6 +10,11 @@ export class AuthenticateGuard extends AuthGuard('jwt-access') {
   }
 
   canActivate(context: ExecutionContext): Promise<boolean> | boolean {
+    // Guard global : sur un handler WebSocket/RPC, Passport lirait le Socket
+    // comme une requête HTTP et échouerait. Le gateway s'authentifie seul.
+    if (context.getType() !== 'http') {
+      return true;
+    }
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),

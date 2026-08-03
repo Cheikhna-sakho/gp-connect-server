@@ -9,7 +9,9 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      - '${DATABASE_PORT}:5432'
+      # Bind loopback uniquement : la base de dev ne doit pas être exposée sur
+      # toutes les interfaces de la machine.
+      - '127.0.0.1:${DATABASE_PORT}:5432'
 
 volumes:
   pgdata:

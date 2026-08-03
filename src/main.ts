@@ -17,6 +17,11 @@ const PORT = process.env.PORT ?? 4000;
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
 
+  // Derrière le proxy de l'hébergeur (Railway) : sans ceci, `req.ip` vaut l'IP
+  // du proxy pour tout le monde → le throttler (login, OTP) partage un seul
+  // bucket global (inefficace + auto-DoS). On fait confiance au 1er hop.
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
   app.useWebSocketAdapter(new IoAdapter(app));
   app.use(cookieParser());
   // AdminJS (SPA servie par le back) repose sur des scripts inline
