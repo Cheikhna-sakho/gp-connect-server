@@ -122,12 +122,37 @@ export class IdentityService {
           data: { idCardVerifiedAt: new Date() },
         }),
       ]);
+    } else if (event.kind === 'canceled') {
+      // Une session annulée révoque le badge KYC : sans ça, un `canceled`
+      // reçu après un `verified` laissait `idCardVerifiedAt` posé et le
+      // gating (OffersService.accept) ouvert.
+      await this.databaseService.$transaction([
+        this.userIdentity.upsert({
+          where: {
+            userId_provider: {
+              userId,
+              provider: UserIdentityProvider.STRIPE_IDENTITY,
+            },
+          },
+          update: {
+            status: UserIdentityStatus.CANCELED,
+            providerId: sessionId,
+          },
+          create: {
+            userId,
+            provider: UserIdentityProvider.STRIPE_IDENTITY,
+            status: UserIdentityStatus.CANCELED,
+            providerId: sessionId,
+          },
+        }),
+        this.databaseService.user.update({
+          where: { id: userId },
+          data: { idCardVerifiedAt: null },
+        }),
+      ]);
     } else {
       await this.upsertStatus({
-        status:
-          event.kind === 'requires_input'
-            ? UserIdentityStatus.REQUIRES_INPUT
-            : UserIdentityStatus.CANCELED,
+        status: UserIdentityStatus.REQUIRES_INPUT,
         providerId: sessionId,
         userId,
         reason: event.reason,

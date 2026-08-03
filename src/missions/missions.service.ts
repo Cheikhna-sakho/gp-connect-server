@@ -97,9 +97,24 @@ export class MissionsService {
     // L'annonce doit exister (sinon `connect` lève P2025 → 500).
     const advertisement = await this.databaseService.advertisement.findUnique({
       where: { id: advertisementId },
-      select: { id: true },
+      select: { id: true, status: true, authorId: true, arrivalDate: true },
     });
     if (!advertisement) throw new NotFoundException('Advertisement not found');
+    // On ne crée une mission que contre une annonce ouverte, non expirée, et
+    // qui n'est pas la sienne. Sans ces gardes, un compte pouvait gonfler la
+    // capacité d'une annonce tierce (missions PENDING → poids cumulé) jusqu'à
+    // masquer le CTA « faire une offre » pour tous — DoS métier invisible.
+    if (advertisement.status !== 'OPEN') {
+      throw new BadRequestException('Advertisement is not open');
+    }
+    if (advertisement.arrivalDate && advertisement.arrivalDate < new Date()) {
+      throw new BadRequestException('Advertisement has expired');
+    }
+    if (advertisement.authorId === shipperId) {
+      throw new ForbiddenException(
+        'Cannot create a mission on your own advertisement',
+      );
+    }
     // Les colis rattachés doivent appartenir au shipper (sinon IDOR : lier les
     // colis d'autrui à sa mission, les lire et les verrouiller). Miroir d'addPackages.
     if (packageIds?.length) {

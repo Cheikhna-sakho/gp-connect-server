@@ -19,6 +19,7 @@ const makeDb = () => {
       create: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
     },
     conversation: { update: jest.fn(), updateMany: jest.fn() },
     $transaction: jest.fn(async (cb: (t: typeof tx) => unknown) => cb(tx)),
@@ -103,9 +104,11 @@ describe('MessagesService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it("PENDING : n'écrit QUE price/weight", async () => {
-      db.messageOffer.findUnique.mockResolvedValue({ status: 'PENDING' });
-      db.messageOffer.update.mockResolvedValue({});
+    it("PENDING : n'écrit QUE price/weight (verrou optimiste)", async () => {
+      db.messageOffer.findUnique
+        .mockResolvedValueOnce({ status: 'PENDING' })
+        .mockResolvedValueOnce({ id: 'o1', price: 200, weight: 8 });
+      db.messageOffer.updateMany.mockResolvedValue({ count: 1 });
 
       await service.updateOffer('o1', {
         price: 200,
@@ -114,10 +117,19 @@ describe('MessagesService', () => {
         missionId: 'x',
       } as never);
 
-      expect(db.messageOffer.update).toHaveBeenCalledWith({
-        where: { id: 'o1' },
+      expect(db.messageOffer.updateMany).toHaveBeenCalledWith({
+        where: { id: 'o1', status: 'PENDING' },
         data: { price: 200, weight: 8 },
       });
+    });
+
+    it('course : édition perdue si l’offre n’est plus PENDING (count 0 → 400)', async () => {
+      db.messageOffer.findUnique.mockResolvedValue({ status: 'PENDING' });
+      db.messageOffer.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.updateOffer('o1', { price: 5 } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 

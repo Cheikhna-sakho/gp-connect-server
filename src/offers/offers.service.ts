@@ -352,10 +352,17 @@ export class OffersService {
       );
     }
 
-    const updated = await this.offers.update({
-      where: { id },
+    // Verrou optimiste : le statut est porté dans le WHERE. Un reject
+    // concurrent d'une offre déjà passée ACCEPTED (double-clic / retry) ne
+    // matche plus → 400, pas d'état « mission engagée mais offre refusée ».
+    const { count } = await this.offers.updateMany({
+      where: { id, status: 'PENDING' },
       data: { status: data.status },
     });
+    if (count === 0) {
+      throw new BadRequestException('This offer is no longer pending');
+    }
+    const updated = await this.offers.findUnique({ where: { id } });
 
     this.eventEmitter.emit('offer.updated', {
       offer: updated,

@@ -13,7 +13,10 @@ import { PublicUserEntity } from 'src/users/entities/public-user.entity';
 
 export const ADVERTISEMENT_DEFAULT_INCLUDE = {
   author: { include: USER_DEFAULT_INCLUDE },
-  missions: { select: MISSION_DEFAULT_INCLUDE },
+  // `status` explicitement sélectionné : activeAdMissions filtre les missions
+  // CANCELLED pour dériver la capacité restante — sans lui, le champ était
+  // `undefined` et TOUTES les missions comptaient (annonce « pleine » à vie).
+  missions: { select: { ...MISSION_DEFAULT_INCLUDE, status: true } },
   departure: { include: ADDRESS_DEFAULT_INCLUDE },
   destination: { include: ADDRESS_DEFAULT_INCLUDE },
 };

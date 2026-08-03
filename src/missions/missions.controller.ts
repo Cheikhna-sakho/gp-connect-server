@@ -43,6 +43,9 @@ import { ProofEntity } from 'src/proof/entities/proof.entity';
 import { ProofOtpEntity } from 'src/proof/entities/proof-otp.entity';
 import { VerifyProofDto } from 'src/proof/dtos/verify-proof.dto';
 
+// Formats bitmap only : exclut image/svg+xml (XSS si rendu inline).
+const PROOF_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
 @ApiTags('missions')
 @ApiAuth()
 @Controller('missions')
@@ -207,7 +210,9 @@ export class MissionsController {
     FilesInterceptor('images', 5, {
       storage: memoryStorage(),
       fileFilter: (_req, file, cb) => {
-        if (!file.mimetype.startsWith('image/')) {
+        // Allowlist exacte (pas de préfixe `image/`) : `image/svg+xml` passait
+        // le préfixe et est un vecteur XSS si servi inline.
+        if (!PROOF_IMAGE_MIME_TYPES.includes(file.mimetype)) {
           return cb(
             new BadRequestException(`File type not allowed: ${file.mimetype}`),
             false,
@@ -244,7 +249,9 @@ export class MissionsController {
     FilesInterceptor('images', 5, {
       storage: memoryStorage(),
       fileFilter: (_req, file, cb) => {
-        if (!file.mimetype.startsWith('image/')) {
+        // Allowlist exacte (pas de préfixe `image/`) : `image/svg+xml` passait
+        // le préfixe et est un vecteur XSS si servi inline.
+        if (!PROOF_IMAGE_MIME_TYPES.includes(file.mimetype)) {
           return cb(
             new BadRequestException(`File type not allowed: ${file.mimetype}`),
             false,

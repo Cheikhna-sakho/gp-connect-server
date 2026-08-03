@@ -1,7 +1,7 @@
 import { Package, Prisma } from '@prisma/client';
 import { Expose, plainToInstance, Type } from 'class-transformer';
 import { PackageEntity } from 'src/packages/entities/package.entity';
-import { MISSION_DEFAULT_INCLUDE } from './mission.entity';
+import type { MISSION_DEFAULT_INCLUDE } from './mission.entity';
 
 type MissionPackage = Prisma.MissionPackageGetPayload<
   typeof MISSION_DEFAULT_INCLUDE.packages

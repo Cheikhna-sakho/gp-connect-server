@@ -33,6 +33,7 @@ const makeDb = () => {
       findMany: jest.fn(),
       findFirst: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
     },
     conversation: { findFirst: jest.fn() },
     user: { findUnique: jest.fn() },
@@ -216,17 +217,17 @@ describe('OffersService', () => {
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
-    it('happy : le contre-parti rejette → update + event', async () => {
-      db.messageOffer.findUnique.mockResolvedValue(rejectableOffer());
-      db.messageOffer.update.mockResolvedValue({
-        id: OFFER,
-        status: 'REJECTED',
-      });
+    it('happy : le contre-parti rejette → updateMany verrouillé + event', async () => {
+      db.messageOffer.findUnique
+        .mockResolvedValueOnce(rejectableOffer())
+        .mockResolvedValueOnce({ id: OFFER, status: 'REJECTED' });
+      db.messageOffer.updateMany.mockResolvedValue({ count: 1 });
 
       await service.update(OFFER, SHIPPER, { status: 'REJECTED' } as never);
 
-      expect(db.messageOffer.update).toHaveBeenCalledWith({
-        where: { id: OFFER },
+      // verrou optimiste : le WHERE porte le statut PENDING
+      expect(db.messageOffer.updateMany).toHaveBeenCalledWith({
+        where: { id: OFFER, status: 'PENDING' },
         data: { status: 'REJECTED' },
       });
       expect(emitter.emit).toHaveBeenCalledWith(
@@ -235,6 +236,15 @@ describe('OffersService', () => {
       );
       // pas de transaction pour un simple rejet
       expect(db.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('course : reject perdu si l’offre n’est plus PENDING (count 0 → 400)', async () => {
+      db.messageOffer.findUnique.mockResolvedValue(rejectableOffer());
+      db.messageOffer.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.update(OFFER, SHIPPER, { status: 'REJECTED' } as never),
+      ).rejects.toThrow('no longer pending');
     });
   });
 

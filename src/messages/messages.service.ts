@@ -128,10 +128,17 @@ export class MessagesService {
     if (offer.status !== 'PENDING') {
       throw new BadRequestException('This offer is no longer pending');
     }
-    return this.offers.update({
-      where: { id },
+    // Verrou optimiste : PENDING porté dans le WHERE. Une édition de prix qui
+    // atterrit pendant/après l'acceptation (course avec accept) ne matche plus
+    // → 400, au lieu d'un chat affichant un prix ≠ celui de la mission engagée.
+    const { count } = await this.offers.updateMany({
+      where: { id, status: 'PENDING' },
       data: { price: data.price, weight: data.weight },
     });
+    if (count === 0) {
+      throw new BadRequestException('This offer is no longer pending');
+    }
+    return this.offers.findUnique({ where: { id } });
   }
 
   async handleNewConversation() {}

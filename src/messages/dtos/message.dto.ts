@@ -16,8 +16,11 @@ import { Type } from 'class-transformer';
 const IsForType = (type: $Enums.MessageType) =>
   ValidateIf((o) => o.type === type);
 
+// N'HÉRITE PAS de CreateOfferDto : sinon price/weight/id de l'offre seraient
+// whitelistés à la RACINE du message et atterriraient dans message.create
+// (→ « Unknown argument price » = 500). Les termes de l'offre passent
+// exclusivement par le champ imbriqué `offer`.
 export class CreateMessageDto
-  extends CreateOfferDto
   implements Omit<Prisma.MessageUncheckedCreateInput, 'offer' | 'appointment'>
 {
   @IsForType('TEXT')

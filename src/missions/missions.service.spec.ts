@@ -58,7 +58,12 @@ describe('MissionsService', () => {
     });
 
     it("IDOR : lève Forbidden si un colis n'appartient pas au shipper", async () => {
-      db.advertisement.findUnique.mockResolvedValue({ id: 'ad1' });
+      db.advertisement.findUnique.mockResolvedValue({
+        id: 'ad1',
+        status: 'OPEN',
+        authorId: 'carrier',
+        arrivalDate: null,
+      });
       db.package.count.mockResolvedValue(1); // 1 possédé sur 2 demandés
 
       await expect(
@@ -72,7 +77,12 @@ describe('MissionsService', () => {
     });
 
     it('crée la mission avec les colis possédés (connect + createMany)', async () => {
-      db.advertisement.findUnique.mockResolvedValue({ id: 'ad1' });
+      db.advertisement.findUnique.mockResolvedValue({
+        id: 'ad1',
+        status: 'OPEN',
+        authorId: 'carrier',
+        arrivalDate: null,
+      });
       db.package.count.mockResolvedValue(2);
       db.mission.create.mockResolvedValue({ id: 'm1' });
 
@@ -92,13 +102,60 @@ describe('MissionsService', () => {
     });
 
     it('crée sans colis (aucun contrôle de propriété)', async () => {
-      db.advertisement.findUnique.mockResolvedValue({ id: 'ad1' });
+      db.advertisement.findUnique.mockResolvedValue({
+        id: 'ad1',
+        status: 'OPEN',
+        authorId: 'carrier',
+        arrivalDate: null,
+      });
       db.mission.create.mockResolvedValue({ id: 'm1' });
 
       await service.create(base);
 
       expect(db.package.count).not.toHaveBeenCalled();
       expect(db.mission.create.mock.calls[0][0].data.packages).toBeUndefined();
+    });
+
+    it("lève BadRequest si l'annonce n'est pas OPEN (DoS capacité)", async () => {
+      db.advertisement.findUnique.mockResolvedValue({
+        id: 'ad1',
+        status: 'IN_PROGRESS',
+        authorId: 'carrier',
+        arrivalDate: null,
+      });
+
+      await expect(service.create(base)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(db.mission.create).not.toHaveBeenCalled();
+    });
+
+    it("lève BadRequest si l'annonce est expirée", async () => {
+      db.advertisement.findUnique.mockResolvedValue({
+        id: 'ad1',
+        status: 'OPEN',
+        authorId: 'carrier',
+        arrivalDate: new Date('2000-01-01'),
+      });
+
+      await expect(service.create(base)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(db.mission.create).not.toHaveBeenCalled();
+    });
+
+    it('lève Forbidden si on cible sa propre annonce', async () => {
+      db.advertisement.findUnique.mockResolvedValue({
+        id: 'ad1',
+        status: 'OPEN',
+        authorId: 'u1', // = shipperId de `base`
+        arrivalDate: null,
+      });
+
+      await expect(service.create(base)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(db.mission.create).not.toHaveBeenCalled();
     });
   });
 
