@@ -44,8 +44,13 @@ export class UserVerificationService {
     await this.verificationToken.deleteMany({
       where: { userId: userId, type },
     });
+    // Le token est lié au canal d'envoi réel : c'est lui que le code prouve,
+    // pas l'identifiant que l'utilisateur saisira au login (il peut donner
+    // son email alors que le code part par SMS).
+    const identifier =
+      type === VerificationTokenType.PHONE ? user?.phone : user?.email;
     await this.verificationToken.create({
-      data: { userId, type, tokenHash, expiresAt },
+      data: { userId, type, tokenHash, identifier, expiresAt },
     });
     return { ...user, token };
   }
@@ -56,19 +61,23 @@ export class UserVerificationService {
     // (c'est elle qu'il faut prouver), même si l'actuelle est déjà vérifiée.
     if (!user) return;
     if (!user.pendingEmail && user.emailVerifiedAt) return;
+    const target = user.pendingEmail ?? user.email;
     const { hash, token } = generateEmailToken();
+    // Un seul lien EMAIL valide à la fois : purger les précédents empêche
+    // qu'un lien émis pour une ancienne adresse serve à valider la nouvelle.
+    await this.verificationToken.deleteMany({
+      where: { userId, type: VerificationTokenType.EMAIL },
+    });
     await this.verificationToken.create({
       data: {
         userId,
         type: VerificationTokenType.EMAIL,
         tokenHash: hash,
+        identifier: target,
         expiresAt: new Date(Date.now() + HOUR_IN_MS),
       },
     });
-    return this.mailService.sendEmailVerification(
-      user.pendingEmail ?? user.email,
-      token,
-    );
+    return this.mailService.sendEmailVerification(target, token);
   }
 
   async verifyEmailToken(token: string) {
@@ -80,6 +89,7 @@ export class UserVerificationService {
       select: {
         userId: true,
         id: true,
+        identifier: true,
         expiresAt: true,
         user: { select: { emailVerifiedAt: true, pendingEmail: true } },
       },
@@ -90,6 +100,12 @@ export class UserVerificationService {
     // Lien rejoué sans changement en attente : idempotent.
     if (!pending && record.user?.emailVerifiedAt) return true;
     if (record.expiresAt < now) throw new BadRequestException('Token expired');
+    // Le token n'autorise QUE l'adresse pour laquelle il a été émis. Si le
+    // pending a changé depuis (adresse d'un tiers posée entre-temps), ce lien
+    // ne doit rien valider : on refuse au lieu d'appliquer le pending courant.
+    if (pending && record.identifier !== pending) {
+      throw new BadRequestException('Invalid token');
+    }
     try {
       await this.databaseService.$transaction([
         this.users.update({
@@ -137,9 +153,23 @@ export class UserVerificationService {
       select: {
         userId: true,
         tokenHash: true,
+        identifier: true,
+        user: { select: { email: true, phone: true } },
       },
     });
     if (!record) throw new UnauthorizedException('Token expired.');
+    // Le canal a changé depuis l'envoi (numéro/adresse modifié entre la
+    // demande du code et sa saisie) : ce code prouve le contrôle de l'ANCIEN
+    // canal, il ne doit pas valider le nouveau. Symétrique du contrôle
+    // pending/identifier des liens email. `identifier` nul = token émis avant
+    // la généralisation du champ → contrôle inapplicable, on laisse passer.
+    const current =
+      type === VerificationTokenType.PHONE
+        ? record.user?.phone
+        : record.user?.email;
+    if (record.identifier && record.identifier !== current) {
+      throw new UnauthorizedException('Token expired.');
+    }
     const verified = await bcrypt.compare(token, record.tokenHash);
     if (!verified) throw new UnauthorizedException('Token invalid');
     await this.verificationToken.deleteMany({

@@ -70,16 +70,16 @@ enum MessageOfferStatus {
 }
 
 model User {
-  id        String  @id @default(uuid())
-  email     String  @unique
+  id           String  @id @default(uuid())
+  email        String  @unique
   // Changement d'email en attente : l'adresse active ne bascule qu'après
   // confirmation du lien envoyé à la NOUVELLE adresse (double confirmation).
   pendingEmail String? @map("pending_email")
-  phone     String? @unique
-  firstName String  @map("first_name")
-  lastName  String  @map("last_name")
-  password  String?
-  role      Role    @default(SHIPPER)
+  phone        String? @unique
+  firstName    String  @map("first_name")
+  lastName     String  @map("last_name")
+  password     String?
+  role         Role    @default(SHIPPER)
 
   //  VERIFY
   emailVerifiedAt  DateTime? @map("email_verified_at")
@@ -188,13 +188,19 @@ enum VerificationTokenType {
 }
 
 model VerificationToken {
-  id        String                @id @default(uuid())
-  userId    String                @map("user_id")
-  type      VerificationTokenType
-  tokenHash String                @map("token_hash")
-  expiresAt DateTime              @map("expires_at")
-  usedAt    DateTime?             @map("used_at")
-  createdAt DateTime              @default(now()) @map("created_at")
+  id         String                @id @default(uuid())
+  userId     String                @map("user_id")
+  type       VerificationTokenType
+  tokenHash  String                @map("token_hash")
+  // Identifiant EXACT auquel le token a été envoyé (adresse email ou numéro
+  // de téléphone selon `type`) : la vérification n'aboutit que si cet
+  // identifiant vaut toujours celui du compte au moment de la consommation.
+  // Sans ce lien, un code/lien émis pour un canal validerait le canal posé
+  // entre-temps (prise de contrôle d'adresse, badge « vérifié » usurpé).
+  identifier String?
+  expiresAt  DateTime              @map("expires_at")
+  usedAt     DateTime?             @map("used_at")
+  createdAt  DateTime              @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -321,19 +327,19 @@ enum DisputeStatus {
 }
 
 model MissionDispute {
-  id           String        @id @default(uuid())
-  missionId    String        @unique @map("mission_id")
-  openedById   String        @map("opened_by_id")
-  reason       String
-  description  String?
-  status       DisputeStatus @default(OPEN)
-  resolution   String?
-  resolvedById String?       @map("resolved_by_id")
-  resolvedAt   DateTime?     @map("resolved_at")
+  id                String        @id @default(uuid())
+  missionId         String        @unique @map("mission_id")
+  openedById        String        @map("opened_by_id")
+  reason            String
+  description       String?
+  status            DisputeStatus @default(OPEN)
+  resolution        String?
+  resolvedById      String?       @map("resolved_by_id")
+  resolvedAt        DateTime?     @map("resolved_at")
   // Numéro de l'issue GitHub de suivi (canal team) — fermée à la résolution.
-  githubIssueNumber Int?     @map("github_issue_number")
-  createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt @map("updated_at")
+  githubIssueNumber Int?          @map("github_issue_number")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
 
   mission    Mission @relation(fields: [missionId], references: [id], onDelete: Cascade)
   openedBy   User    @relation("DisputeOpened", fields: [openedById], references: [id])

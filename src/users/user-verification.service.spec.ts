@@ -96,6 +96,9 @@ describe('UserVerificationService', () => {
       db.verificationToken.findFirst.mockResolvedValue({
         id: 't1',
         userId: 'u1',
+        // Le token est lié à l'adresse pour laquelle il a été émis, et elle
+        // vaut toujours le pendingEmail courant → la bascule s'applique.
+        identifier: 'new@x.com',
         expiresAt: new Date(Date.now() + 10_000),
         // Adresse actuelle déjà vérifiée — le pending doit primer sur
         // l'idempotence « déjà vérifié ».
@@ -109,10 +112,28 @@ describe('UserVerificationService', () => {
       expect(arg.data.emailVerifiedAt).toBeInstanceOf(Date);
     });
 
+    it('token lié à une AUTRE adresse que le pending courant → refusé', async () => {
+      // Anti prise de contrôle : lien émis pour l'adresse de l'attaquant, mais
+      // le pending a depuis été changé vers l'email d'une victime.
+      db.verificationToken.findFirst.mockResolvedValue({
+        id: 't1',
+        userId: 'u1',
+        identifier: 'attaquant@x.com',
+        expiresAt: new Date(Date.now() + 10_000),
+        user: { emailVerifiedAt: null, pendingEmail: 'victime@x.com' },
+      });
+
+      await expect(service.verifyEmailToken('abc')).rejects.toThrow(
+        'Invalid token',
+      );
+      expect(db.user.update).not.toHaveBeenCalled();
+    });
+
     it('course perdue à la bascule (P2002) → BadRequest explicite', async () => {
       db.verificationToken.findFirst.mockResolvedValue({
         id: 't1',
         userId: 'u1',
+        identifier: 'new@x.com',
         expiresAt: new Date(Date.now() + 10_000),
         user: { emailVerifiedAt: null, pendingEmail: 'new@x.com' },
       });
@@ -140,6 +161,8 @@ describe('UserVerificationService', () => {
       db.verificationToken.findFirst.mockResolvedValue({
         userId: 'u1',
         tokenHash: HASH,
+        identifier: 'a@x.com',
+        user: { email: 'a@x.com', phone: '+33600000001' },
       });
       await expect(
         service.verifyOtpToken('u1', '999999', 'EMAIL' as never),
@@ -151,6 +174,8 @@ describe('UserVerificationService', () => {
       db.verificationToken.findFirst.mockResolvedValue({
         userId: 'u1',
         tokenHash: HASH,
+        identifier: 'a@x.com',
+        user: { email: 'a@x.com', phone: '+33600000001' },
       });
       await expect(
         service.verifyOtpToken('u1', '123456', 'EMAIL' as never),
@@ -158,6 +183,36 @@ describe('UserVerificationService', () => {
       expect(db.verificationToken.deleteMany).toHaveBeenCalledWith({
         where: { userId: 'u1', type: 'EMAIL' },
       });
+    });
+
+    it('canal changé depuis l’envoi : le code de l’ANCIEN numéro ne valide pas le nouveau', async () => {
+      // Anti badge « vérifié » usurpé : OTP envoyé au numéro A, puis PATCH
+      // /users bascule le compte sur B (bascule immédiate côté téléphone).
+      // Le code reçu sur A prouve le contrôle de A, pas de B.
+      db.verificationToken.findFirst.mockResolvedValue({
+        userId: 'u1',
+        tokenHash: HASH,
+        identifier: '+33600000001',
+        user: { email: 'a@x.com', phone: '+33600000002' },
+      });
+      await expect(
+        service.verifyOtpToken('u1', '123456', 'PHONE' as never),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(db.verificationToken.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('token legacy sans identifiant : contrôle inapplicable, code accepté', async () => {
+      // Tokens émis avant la généralisation du champ — pas de régression de
+      // login pendant la fenêtre de migration.
+      db.verificationToken.findFirst.mockResolvedValue({
+        userId: 'u1',
+        tokenHash: HASH,
+        identifier: null,
+        user: { email: 'a@x.com', phone: '+33600000002' },
+      });
+      await expect(
+        service.verifyOtpToken('u1', '123456', 'PHONE' as never),
+      ).resolves.toBe(true);
     });
   });
 });
