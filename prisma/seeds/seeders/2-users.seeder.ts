@@ -5,7 +5,7 @@ import * as bcrypt from 'bcrypt';
 const UNIVERSAL_OTP = '123456';
 const OTP_EXPIRES_FAR = new Date('2099-12-31');
 
-export const USERS = {
+const USERS = {
   admin: {
     email: 'admin@gpconnect.test',
     firstName: 'Admin',

@@ -1,1 +1,14 @@
+# 1) eslint + prettier sur les fichiers stagés
 npx lint-staged
+
+# 2) Audit fallow des fichiers modifiés (gate new-only : seuls les problèmes
+# introduits par le changeset bloquent). Bypass ponctuel : git commit --no-verify
+UPSTREAM="$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
+if [ -n "$UPSTREAM" ]; then
+  # merge-base avec l'upstream : les branches forkées d'une base non-main
+  # sont comparées à la bonne référence
+  BASE="$(git merge-base "$UPSTREAM" HEAD 2>/dev/null || echo "$UPSTREAM")"
+else
+  BASE="main"
+fi
+pnpm exec fallow audit --base "$BASE" --quiet --gate-marker pre-commit

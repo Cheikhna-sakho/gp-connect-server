@@ -1,0 +1,32 @@
+{
+  // Points d'entrée invisibles pour fallow :
+  // - seeds : lancés via package.json "prisma": { "seed": "ts-node prisma/seeds" }
+  // - utils/rsa* : scripts manuels de génération des clés JWT RS256
+  "entry": ["prisma/seeds/index.ts", "utils/rsa.ts", "utils/rsaKeyGenerator.util.ts"],
+
+  // Faux positifs vérifiés à la main (08/2026) — utilisés hors imports :
+  // le trio admin est chargé dynamiquement par l'express.loader de
+  // @adminjs/nestjs (formidable/session sont ses peers), eslint-config-prettier
+  // via .eslintrc, @nestjs/schematics par le CLI Nest, @commitlint/types en
+  // JSDoc dans commitlint.config.js, faker par les seeds uniquement (devDep
+  // légitime : les seeds ne tournent pas en prod, mais on les déclare en
+  // entry ci-dessus, ce qui les fait passer pour du code de prod).
+  "ignoreDependencies": [
+    "@adminjs/express",
+    "express-formidable",
+    "express-session",
+    "eslint-config-prettier",
+    "@nestjs/schematics",
+    "@commitlint/types",
+    "@faker-js/faker"
+  ],
+
+  // Seuils du gate pre-commit (audit new-only), alignés sur le client :
+  // sans coverage branchée dans le hook, CRAP ≈ cc² + cc — redondant avec
+  // maxCyclomatic (20, défaut) : 420 le neutralise. maxUnitSize relevé au
+  // style maison.
+  "health": {
+    "maxCrap": 420,
+    "maxUnitSize": 120
+  }
+}

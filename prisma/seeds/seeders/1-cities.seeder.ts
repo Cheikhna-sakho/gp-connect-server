@@ -1,6 +1,6 @@
 import { prismaClient } from '../configs/prisma-client';
 
-export const CITIES = [
+const CITIES = [
   { name: 'Paris',      country: 'France',  countryIsoCode: 'FR' },
   { name: 'Lyon',       country: 'France',  countryIsoCode: 'FR' },
   { name: 'Marseille',  country: 'France',  countryIsoCode: 'FR' },
