@@ -162,6 +162,34 @@ export class IdentityService {
     return { received: true };
   }
 
+  /**
+   * Droit à l'effacement — à appeler AVANT la suppression du compte.
+   * Les pièces d'identité ne sont pas stockées chez nous mais chez le
+   * provider ; `providerId` est le seul lien vers elles, et il part en
+   * cascade avec le compte. Ne pas purger ici = documents orphelins chez le
+   * provider, définitivement (plus aucun identifiant pour les retrouver).
+   */
+  async redactUserData(userId: string) {
+    const sessions = await this.userIdentity.findMany({
+      where: { userId },
+      select: { providerId: true },
+    });
+    for (const { providerId } of sessions) {
+      if (!providerId) continue;
+      try {
+        await this.verifier.redactSession(providerId);
+      } catch (e) {
+        // Une panne du provider ne doit pas empêcher un utilisateur de
+        // supprimer son compte. L'identifiant est loggué en ERROR : c'est
+        // le seul moyen de purger a posteriori une fois la ligne effacée.
+        this.logger.error(
+          `Purge identité ${providerId} échouée (user ${userId}) — purge manuelle requise chez le provider`,
+          e instanceof Error ? e.stack : undefined,
+        );
+      }
+    }
+  }
+
   private async upsertStatus({
     userId,
     status,

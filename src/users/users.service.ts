@@ -13,6 +13,7 @@ import { USER_DEFAULT_INCLUDE } from './entities/user.entity';
 import { UpdateUserDto } from './dtos/update-user.dto';
 import { UserVerificationService } from './user-verification.service';
 import { isUniqueViolation } from 'src/common/utils/prisma-errors.util';
+import { IdentityService } from 'src/identity/identity.service';
 
 type Find = { where: Prisma.UserWhereInput };
 type FindOne = { where: Prisma.UserWhereInput };
@@ -35,6 +36,7 @@ export class UsersService {
     private readonly databaseService: DatabaseService,
     private readonly mediasService: MediasService,
     private readonly verification: UserVerificationService,
+    private readonly identity: IdentityService,
   ) {
     this.users = this.databaseService.user;
     this.avatar = this.databaseService.userAvatar;
@@ -177,10 +179,18 @@ export class UsersService {
     }
     return { pendingEmail, resets };
   }
-  async delete(where: Delete) {
+  async delete({ where }: Delete) {
+    // Purge des pièces d'identité chez le provider AVANT le delete : elles ne
+    // sont pas chez nous, et la ligne UserIdentity — seul lien vers elles —
+    // part en cascade. Après, elles seraient introuvables donc ineffaçables.
+    const user = await this.users.findUnique({
+      where,
+      select: { id: true },
+    });
+    if (user) await this.identity.redactUserData(user.id);
     // `return` obligatoire : sans lui la suppression partait sans être
     // attendue — succès renvoyé même si la DB refusait.
-    return this.users.delete(where);
+    return this.users.delete({ where });
   }
 
   // ─── Stats ────────────────────────────────────────────────────────────────

@@ -47,6 +47,10 @@ export class StripeIdentityVerifier implements IdentityVerifierPort {
     };
   }
 
+  async redactSession(sessionId: string): Promise<void> {
+    await this.stripe.identity.verificationSessions.redact(sessionId);
+  }
+
   parseWebhook(
     rawBody: Buffer | undefined,
     signature: string | undefined,

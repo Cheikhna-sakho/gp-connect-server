@@ -38,15 +38,18 @@ const makeDb = () => ({
 describe('UsersService', () => {
   let db: ReturnType<typeof makeDb>;
   let service: UsersService;
+  let identity: { redactUserData: jest.Mock };
 
   beforeEach(() => {
     db = makeDb();
+    identity = { redactUserData: jest.fn().mockResolvedValue(undefined) };
     service = new UsersService(
       db as never,
       { createImage: jest.fn(), delete: jest.fn() } as never,
       {
         sendEmailVerification: jest.fn().mockResolvedValue(undefined),
       } as never,
+      identity as never,
     );
   });
 
@@ -219,6 +222,35 @@ describe('UsersService', () => {
           },
         }),
       );
+    });
+  });
+
+  describe('delete (droit à l\u2019effacement)', () => {
+    it('purge les pièces d\u2019identité chez le provider AVANT de supprimer le compte', async () => {
+      // L'ordre est la garantie : le providerId part en cascade avec le
+      // compte, après le delete les documents seraient introuvables.
+      const order: string[] = [];
+      db.user.findUnique.mockResolvedValue({ id: 'u1' });
+      identity.redactUserData.mockImplementation(async () => {
+        order.push('redact');
+      });
+      db.user.delete.mockImplementation(async () => {
+        order.push('delete');
+      });
+
+      await service.delete({ where: { id: 'u1' } });
+
+      expect(identity.redactUserData).toHaveBeenCalledWith('u1');
+      expect(order).toEqual(['redact', 'delete']);
+    });
+
+    it('compte introuvable : ne purge rien et laisse la DB trancher', async () => {
+      db.user.findUnique.mockResolvedValue(null);
+
+      await service.delete({ where: { id: 'inconnu' } });
+
+      expect(identity.redactUserData).not.toHaveBeenCalled();
+      expect(db.user.delete).toHaveBeenCalledWith({ where: { id: 'inconnu' } });
     });
   });
 });

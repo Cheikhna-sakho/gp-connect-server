@@ -34,4 +34,10 @@ export interface IdentityVerifierPort {
     rawBody: Buffer | undefined,
     signature: string | undefined,
   ): IdentityWebhookEvent;
+  /**
+   * Purge chez le provider les données d'identité d'une session (pièce
+   * d'identité scannée) — droit à l'effacement RGPD. Les documents ne
+   * transitent jamais par nos serveurs : c'est le SEUL moyen de les effacer.
+   */
+  redactSession(sessionId: string): Promise<void>;
 }

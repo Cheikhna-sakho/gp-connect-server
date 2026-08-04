@@ -25,5 +25,8 @@ import { StripeIdentityVerifier } from './adapters/stripe-identity.verifier';
     },
     IdentityService,
   ],
+  // Exporté pour la purge des documents d'identité à la suppression de compte
+  // (UsersService) — le reste du domaine ne dépend pas de ce module.
+  exports: [IdentityService],
 })
 export class IdentityModule {}
