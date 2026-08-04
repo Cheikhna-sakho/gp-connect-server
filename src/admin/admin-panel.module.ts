@@ -26,6 +26,17 @@ const readOnly = {
   bulkDelete: { isAccessible: false },
 };
 
+// Ressource enregistrée UNIQUEMENT pour résoudre des références : ni menu, ni
+// consultation. `navigation: false` ne fait que masquer l'entrée du menu — les
+// routes /admin/resources/<X> restent servies —, il faut donc fermer list/show
+// explicitement. Sans ça, Address exposait un annuaire de rues + GPS au mètre.
+const referenceOnly = {
+  ...readOnly,
+  list: { isAccessible: false },
+  show: { isAccessible: false },
+  search: { isAccessible: false },
+};
+
 /**
  * Back-office AdminJS sur /admin — consultation (users, annonces, missions,
  * transactions, signalements, blocages, notes) + résolution des litiges via
@@ -188,11 +199,11 @@ export class AdminPanelModule {
                 // (« no resources with given id: Address »).
                 {
                   resource: { model: model('Address'), client: db },
-                  options: { navigation: false, actions: readOnly },
+                  options: { navigation: false, actions: referenceOnly },
                 },
                 {
                   resource: { model: model('City'), client: db },
-                  options: { navigation: false, actions: readOnly },
+                  options: { navigation: false, actions: referenceOnly },
                 },
                 {
                   resource: { model: model('MissionRating'), client: db },
